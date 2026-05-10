@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS Canciones_Playlist (
 -- Carátulas separadas por tamaño BLOB
 CREATE TABLE IF NOT EXISTS Caratulas (
     id_caratula     INTEGER PRIMARY KEY AUTOINCREMENT,
+    url_caratula    TEXT,
     imagen_bytes    BLOB,
     id_album        INTEGER UNIQUE,
     CONSTRAINT fk_caratula_album FOREIGN KEY (id_album) REFERENCES Albumes(id_album)

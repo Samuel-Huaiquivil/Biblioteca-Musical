@@ -5,7 +5,7 @@
 from datetime import date
 from typing import List
 
-from models.schemas import Album, Cancion, GrupoArtistas, Genero, RespuestaItunes
+from models.schemas import Album, Cancion, DatosCaratula, GrupoArtistas, Genero, RespuestaItunes
 from utils.parsear_artistas import parsear_artistas
 
 
@@ -43,6 +43,14 @@ def convertir_a_cancion(resp: RespuestaItunes) -> Cancion:
         num_pista=resp.trackNumber,
         explicito=_explicito(resp.trackExplicitness),
         codigo_itunes=resp.trackId,
+    )
+
+
+def convertir_a_datos_caratula(resp: RespuestaItunes) -> DatosCaratula:
+    return DatosCaratula(
+        codigo_album=resp.collectionId,
+        url_caratula=resp.artworkUrl100,
+        imagen=None
     )
 
 

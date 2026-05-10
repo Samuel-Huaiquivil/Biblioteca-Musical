@@ -55,7 +55,8 @@ class DatosMusica(BaseModel):
 class DatosCaratula(BaseModel):
     """Bytes de la carátula asociada a un álbum."""
     codigo_album: int
-    imagen: bytes
+    url_caratula: str
+    imagen: Optional[bytes] = None
 
 # ---------------------------------------------------------------------------
 # Modelo de validación de respuesta iTunes

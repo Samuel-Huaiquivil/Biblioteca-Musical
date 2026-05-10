@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List
 
 from config.settings import get_connection
-from models.schemas import Album, Cancion, GrupoArtistas, Genero
+from models.schemas import Album, Cancion, DatosCaratula, GrupoArtistas, Genero
 from utils.errores import ErrorBaseDatos, ErrorInsercion
 
 
@@ -156,6 +156,28 @@ def vincular_artista_cancion(id_artista: int, id_cancion: int,
         raise ErrorBaseDatos(f"Error vinculando artista {id_artista} con canción {id_cancion}.") from e
 
 
+def insertar_caratula(caratula: DatosCaratula, id_album: int, img_bytes: bool = False, db: Path | None = None) -> None:
+    "Inserta la url de la carátula"
+    try:
+        imagen_bytes=None
+        if img_bytes:
+            import requests
+            url = caratula.url_caratula
+            respuesta = requests.get(url, timeout=10)
+            respuesta.raise_for_status() 
+            imagen_bytes = respuesta.content
+        with get_connection(db) as conn:
+            cursor = conn.execute(
+                """INSERT OR IGNORE INTO Caratulas
+                (url_caratula, imagen_bytes, id_album)
+                VALUES (?, ?, ?);""",
+                (caratula.url_caratula, imagen_bytes, id_album)
+            )
+            conn.commit()
+    except Exception as e:
+        raise ErrorInsercion("Carátula", str(e)) from e
+
+
 # ===========================================================================
 # OPERACIÓN COMPUESTA — obtener o insertar (patrón principal del pipeline)
 # ===========================================================================
@@ -171,6 +193,11 @@ def _obtener_o_insertar(buscar_fn, insertar_fn, entidad: str) -> int:
     if not resultado:
         raise ErrorInsercion(entidad, "La función de inserción no retornó un id válido.")
     return resultado
+
+
+def guardar_caratula(album: Album, caratula: DatosCaratula, img_bytes: bool = False, db: Path | None = None) -> None:
+    id_album = buscar_album(album.titulo, db)
+    insertar_caratula(caratula, id_album, img_bytes, db)
 
 
 def guardar_cancion_completa(

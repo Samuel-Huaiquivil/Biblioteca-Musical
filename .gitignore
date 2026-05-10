@@ -1,0 +1,6 @@
+# Ignorar carpetas de caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.sqlite3
+venv/
