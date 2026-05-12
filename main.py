@@ -3,8 +3,8 @@
 # Guarda en base de datos local y escribe tags ID3.
 
 from pathlib import Path
-from config.settings import DB_PATH
 from config.setup import preparar_entorno
+from config.settings import DB_PATH, RUTA_ALT, RUTA_CARATULAS, RUTA_CARPETA
 from database.repository import buscar_artista, buscar_cancion, guardar_cancion_completa, guardar_caratula
 from api.itunes import buscar_cancion_itunes
 from api.musicbrainz import buscar_cancion_mbz, obtener_mejor_recording
@@ -15,10 +15,8 @@ from utils.dicc_a_clases import convertir_a_datos_caratula, convertir_respuesta
 from utils.dicc_a_clases_mbz import convertir_recording
 from utils.listar_mp3 import listar_elementos_ruta
 from utils.errores import ErrorArchivo, ErrorAPI, ErrorBaseDatos
-from processing.id3 import escribir_caratula, escribir_tags, insertar_caratula, modelos_a_datos_musica
+from processing.id3 import escribir_tags, insertar_caratula, modelos_a_datos_musica
 
-RUTA_DEFECTO = Path("C:/Users/MSI/Music")
-RUTA_CARATULAS = Path("C:/Users/MSI/Pictures/Caratulas")
 
 def _registrar_error(ruta_log: Path, mensaje: str) -> None:
     """Añade una línea al log de errores."""
@@ -27,8 +25,8 @@ def _registrar_error(ruta_log: Path, mensaje: str) -> None:
 
 
 def procesar_canciones(
-    ruta: Path = RUTA_DEFECTO,
-    cantidad: int = 2,
+    ruta: Path = RUTA_CARPETA,
+    cantidad: int = 3,
     base_datos: Path | None = DB_PATH,
 ) -> None:
     """
@@ -183,4 +181,5 @@ def procesar_canciones(
             _registrar_error(log, f"[Caratula] Error: {e}")
 
 if __name__ == "__main__":
-    procesar_canciones()
+    ruta_alternativa = RUTA_ALT
+    procesar_canciones(ruta=ruta_alternativa, cantidad=2)
