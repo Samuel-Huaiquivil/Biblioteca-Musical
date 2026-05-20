@@ -1,18 +1,9 @@
 # config/settings.py
 # Adaptadores, convertidores y conexión centralizada a SQLite3.
-import os
-import dotenv
 import sqlite3
 from datetime import date
 from pathlib import Path
-
-dotenv.load_dotenv()
-
-RUTA_CARPETA = Path(os.environ.get("RUTA_DEFECTO", ""))
-RUTA_CARATULAS = Path(os.environ.get("RUTA_CARATULAS", ""))
-DB_PATH = Path(os.environ.get("DB_PATH_ABS", ""))
-RUTA_ALT = Path(os.environ.get("RUTA_ALT", ""))
-
+from config.setup import DB_PATH
 
 # ---------------------------------------------------------------------------
 # Adaptadores: Python → SQLite (al guardar)

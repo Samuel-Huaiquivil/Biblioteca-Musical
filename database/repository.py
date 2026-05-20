@@ -4,7 +4,7 @@
 
 import sqlite3
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from config.settings import get_connection
 from models.schemas import Album, Cancion, DatosCaratula, GrupoArtistas, Genero
@@ -69,6 +69,67 @@ def buscar_cancion(titulo: str, db: Path | None = None) -> int:
         return fila[0] if fila else 0
     except Exception as e:
         raise ErrorBaseDatos(f"Error buscando canción '{titulo}'.") from e
+
+
+def buscar_caratula(id_album: int, db: Path | None = None) -> int:
+    if not id_album:
+        raise ValueError("El ID del álbum no puede estar vacío.")
+    try:
+        with get_connection(db) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id_caratula FROM Caratulas WHERE id_album = ?;", (id_album,)
+            )
+            id_caratula = cursor.fetchone()
+        return id_caratula[0] if id_caratula else 0
+    except Exception as e:
+        raise ErrorBaseDatos(f"Error buscando la Carátula del Álbum con ID: {id_album}.") from e
+
+
+def buscar_album_cod_itunes(codigo_itunes: int, db: Path | None = None) -> int:
+    if not codigo_itunes:
+        raise ValueError("El código iTunes del álbum no puede estar vacío.")
+    try:
+        with get_connection(db) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id_album FROM Albumes WHERE codigo_itunes = ?;", (codigo_itunes,)
+            )
+            id_album = cursor.fetchone()
+        return id_album[0] if id_album else 0
+    except Exception as e:
+        raise ErrorBaseDatos(f"Error buscando el álbum con Código iTunes: {codigo_itunes}.") from e
+
+
+def busqueda_avanzada(titulo: str, artista: str, db: Path | None = None) -> Dict[str, int] | None:
+    if not titulo:
+        raise ValueError("El título de la canción no puede estar vacío.")
+    if not artista:
+        raise ValueError("El nombre del artista no puede estar vacío.")
+
+    try:
+        with get_connection(db) as conn:
+            cursor = conn.cursor()
+
+            # Consulta con JOIN: busca artista y canción en una sola pasada
+            resultado = cursor.execute(
+                """
+                SELECT a.id_artista, c.id_cancion
+                FROM Artistas a
+                JOIN Canciones c ON a.id_artista = c.id_artista
+                WHERE a.nombre_artista = ? AND c.titulo_cancion = ?
+                """,
+                (artista, titulo)
+            ).fetchone()
+
+            if resultado is None:
+                return None
+
+            id_artista, id_cancion = resultado
+            return {"artista": id_artista, "cancion": id_cancion}
+
+    except sqlite3.Error as e:
+        raise ErrorBaseDatos(f"Error buscando canción '{titulo}': {e}") from e
 
 
 # ===========================================================================
@@ -195,9 +256,26 @@ def _obtener_o_insertar(buscar_fn, insertar_fn, entidad: str) -> int:
     return resultado
 
 
-def guardar_caratula(album: Album, caratula: DatosCaratula, img_bytes: bool = False, db: Path | None = None) -> None:
-    id_album = buscar_album(album.titulo, db)
-    insertar_caratula(caratula, id_album, img_bytes, db)
+def guardar_caratula(album: Album, genero: Genero, artistas: GrupoArtistas, caratula: DatosCaratula, img_bytes: bool = False, db: Path | None = None) -> None:
+    try:
+        id_album = buscar_album(album.titulo, db)
+        
+        if not id_album:
+            id_genero = _obtener_o_insertar(
+                buscar_fn=lambda: buscar_genero(genero.nombre, db),
+                insertar_fn=lambda: insertar_genero(genero, db),
+                entidad="Género"
+            )
+            id_artista_principal = _obtener_o_insertar(
+                buscar_fn=lambda: buscar_artista(artistas.principal, db),
+                insertar_fn=lambda: insertar_artista(artistas.principal, artistas.codigo_itunes, db),
+                entidad="Artista principal"
+            )
+            id_album = insertar_album(album, id_genero, id_artista_principal, False, db)
+        
+        insertar_caratula(caratula, id_album, img_bytes, db)
+    except ErrorInsercion as e:
+        raise ErrorInsercion("Caratula", f"Error: {e}")
 
 
 def guardar_cancion_completa(
@@ -205,6 +283,8 @@ def guardar_cancion_completa(
     artistas: GrupoArtistas,
     album: Album,
     cancion: Cancion,
+    estado: str = "Pendiente",
+    alb_rev: bool = False,
     db: Path | None = None
 ) -> bool:
     """
@@ -224,12 +304,12 @@ def guardar_cancion_completa(
     )
     id_album = _obtener_o_insertar(
         buscar_fn=lambda: buscar_album(album.titulo, db),
-        insertar_fn=lambda: insertar_album(album, id_genero, id_artista_principal, False, db),
+        insertar_fn=lambda: insertar_album(album, id_genero, id_artista_principal, alb_rev, db),
         entidad="Álbum"
     )
     id_cancion = _obtener_o_insertar(
         buscar_fn=lambda: buscar_cancion(cancion.titulo, db),
-        insertar_fn=lambda: insertar_cancion(cancion, id_album, id_genero, "Pendiente", db),
+        insertar_fn=lambda: insertar_cancion(cancion, id_album, id_genero, estado, db),
         entidad="Canción"
     )
 

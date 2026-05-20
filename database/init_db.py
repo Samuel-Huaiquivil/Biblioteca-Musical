@@ -22,4 +22,4 @@ def iniciar_base_datos(base_datos: Path | None = DB_PATH) -> None:
         conn.executescript(sql)
         conn.commit()
 
-    print(f"Base de datos iniciada correctamente.")
+    print("Base de datos cargada correctamente.")

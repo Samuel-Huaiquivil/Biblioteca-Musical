@@ -1,6 +1,7 @@
 # utils/ponderador.py
 # Evalúa y selecciona el mejor diccionario iTunes de una lista de resultados.
-
+import math
+from difflib import SequenceMatcher
 from collections import Counter
 from typing import List
 from models.schemas import RespuestaItunes
@@ -72,7 +73,7 @@ def validar_respuesta_itunes(dicc: dict) -> RespuestaItunes:
         raise ValueError(f"Respuesta iTunes inválida: {e}") from e
 
 
-def obtener_mejor_diccionario(lista: List[dict]) -> dict:
+def obtener_mejor_diccionario(lista: List[dict], titulo_referencia: str, artista_referencia: str) -> dict:
     """
     Evalúa una lista de resultados iTunes y retorna el más adecuado.
 
@@ -97,7 +98,7 @@ def obtener_mejor_diccionario(lista: List[dict]) -> dict:
 
     moda_artista = Counter(artistas).most_common(1)[0][0]
     moda_cancion = Counter(canciones).most_common(1)[0][0]
-    fecha_minima = min(f for f in fechas if f)  # ignorar strings vacíos
+    fecha_minima = min(f for f in fechas if f)
 
     puntajes: dict[int, float] = {}
 
@@ -110,10 +111,16 @@ def obtener_mejor_diccionario(lista: List[dict]) -> dict:
         if dicc.get("trackName") == moda_cancion:
             puntaje += 10
         if dicc.get("releaseDate") == fecha_minima:
-            puntaje += 20
+            puntaje += 40
 
-        # Sumar completitud (no multiplicar — multiplicar anula si puntaje es 0)
+        # Sumar completitud
         puntaje += _puntaje_completitud(dicc) * 85
+
+        # Similitudes del titulo
+        titulo_cancion = dicc.get("trackName")
+        if titulo_cancion:
+            similitud_cancion = SequenceMatcher(None, titulo_referencia, titulo_cancion).ratio()
+            puntaje += math.trunc(similitud_cancion * 50)
 
         # Penalizar compilaciones
         if es_compilacion(dicc):

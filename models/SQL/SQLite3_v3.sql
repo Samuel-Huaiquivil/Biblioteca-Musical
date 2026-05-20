@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS Albumes (
     id_artista_principal INTEGER,
     creado_en           TEXT    DEFAULT (date('now')),  -- auditoría
     CONSTRAINT fk_artista_album FOREIGN KEY (id_artista_principal) REFERENCES Artistas(id_artista),
-    CONSTRAINT fk_genero_album  FOREIGN KEY (id_genero_principal)  REFERENCES Generos(id_genero)
+    CONSTRAINT fk_genero_album  FOREIGN KEY (id_genero_principal)  REFERENCES Generos(id_genero),
+    CONSTRAINT uk_album_artista UNIQUE (titulo_album, id_artista_principal)
 );
 
 CREATE TABLE IF NOT EXISTS Canciones (
@@ -42,7 +43,8 @@ CREATE TABLE IF NOT EXISTS Canciones (
     id_genero       INTEGER,
     creado_en       TEXT    DEFAULT (date('now')),  -- auditoría
     CONSTRAINT fk_album_cancion  FOREIGN KEY (id_album)  REFERENCES Albumes(id_album),
-    CONSTRAINT fk_genero_cancion FOREIGN KEY (id_genero) REFERENCES Generos(id_genero)
+    CONSTRAINT fk_genero_cancion FOREIGN KEY (id_genero) REFERENCES Generos(id_genero),
+    CONSTRAINT uk_cancion_album_pista UNIQUE (id_album, numero_pista, titulo_cancion)
 );
 
 -- Variantes: remix, concierto, instrumental, etc.
@@ -84,7 +86,6 @@ CREATE TABLE IF NOT EXISTS Artistas_Variantes (
 );
 
 -- Playlists
--- numero_canciones se elimina: se calcula con COUNT sobre Canciones_Playlist.
 CREATE TABLE IF NOT EXISTS Playlists (
     id_playlist     INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre_playlist TEXT    NOT NULL

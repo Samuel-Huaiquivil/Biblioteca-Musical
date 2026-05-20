@@ -43,7 +43,7 @@ def _get(url: str, params: dict) -> dict[str, Any]:
 # Búsqueda de canción — función principal del pipeline
 # ---------------------------------------------------------------------------
 
-def buscar_cancion_itunes(titulo: str, artista: str, limite: int = 10) -> list[dict]:
+def buscar_cancion_itunes(titulo: str, artista: str, limite: int = 5, region: str = _PAIS) -> list[dict]:
     """
     Busca una canción por título y artista en iTunes.
     Retorna solo los resultados que cumplen las propiedades mínimas
@@ -60,7 +60,7 @@ def buscar_cancion_itunes(titulo: str, artista: str, limite: int = 10) -> list[d
         "media": "music",
         "entity": "song",
         "limit": limite,
-        "country": _PAIS,
+        "country": region,
     })
 
     resultados = data.get("results", [])
@@ -72,7 +72,7 @@ def buscar_cancion_itunes(titulo: str, artista: str, limite: int = 10) -> list[d
 # Búsqueda de álbumes de un artista
 # ---------------------------------------------------------------------------
 
-def buscar_albumes_artista(nombre_artista: str, limite: int = 5) -> list[dict]:
+def buscar_albumes_artista(nombre_artista: str, limite: int = 5, region: str = _PAIS) -> list[dict]:
     """
     Retorna álbumes del artista indicado.
     Útil para poblar la base de datos con discografía completa.
@@ -84,7 +84,7 @@ def buscar_albumes_artista(nombre_artista: str, limite: int = 5) -> list[dict]:
         "term": nombre_artista,
         "entity": "album",
         "limit": limite,
-        "country": _PAIS,
+        "country": region,
     })
 
     return data.get("results", [])
@@ -94,7 +94,7 @@ def buscar_albumes_artista(nombre_artista: str, limite: int = 5) -> list[dict]:
 # Búsqueda de canciones por ID de álbum (iTunes lookup)
 # ---------------------------------------------------------------------------
 
-def buscar_canciones_album(id_album: int) -> list[dict]:
+def buscar_canciones_album(id_album: int, region: str = _PAIS) -> list[dict]:
     """
     Retorna las canciones de un álbum dado su código iTunes.
     Usa el endpoint /lookup que es más preciso que /search.
@@ -105,7 +105,7 @@ def buscar_canciones_album(id_album: int) -> list[dict]:
     data = _get(_URL_LOOKUP, params={
         "id": id_album,
         "entity": "song",
-        "country": _PAIS,
+        "country": region,
     })
 
     resultados = data.get("results", [])
