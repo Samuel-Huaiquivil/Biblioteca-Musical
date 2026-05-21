@@ -3,7 +3,7 @@ from typing import Any, Dict
 import requests
 from pathlib import Path
 
-from config.settings import RUTA_CARATULAS
+
 from database.repository import buscar_album_cod_itunes, buscar_caratula
 from models.schemas import DatosCaratula, Album
 from processing.id3 import insertar_caratula_desde_base_datos, insertar_caratula_desde_datos_caratula, insertar_caratula_desde_ruta
@@ -37,6 +37,18 @@ def descargar_caratula(caratula: DatosCaratula, ruta_destino: Path) -> bool:
 
     except Exception as e:
         raise Exception(f"Error al descargar carátula iTunes: {e}") from e
+
+
+def guardar_imagen_bytes(caratula: DatosCaratula, ruta_destino: Path) -> None:
+    "Guarda solamente la imagen bytes de la clase"
+    if not caratula.imagen:
+        return None
+    try:
+        ruta = ruta_destino / f"{caratula.codigo_album}.jpg"
+        with open(ruta, "wb") as f:
+            f.write(caratula.imagen)
+    except Exception as e:
+        raise Exception(f"Error al guardar la carátula: {e}") from e
 
 # ===========================================================================
 # BÚSQUEDAS — retornan el id local o 0 si no existe

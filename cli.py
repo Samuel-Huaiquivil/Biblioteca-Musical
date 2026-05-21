@@ -19,7 +19,7 @@ from pathlib import Path
 
 from database import crud
 from utils.errores import ErrorBaseDatos
-from config.settings import DB_PATH
+from config.setup import DB_PATH
 # Ancho de columna para la presentación en tabla
 db = DB_PATH
 

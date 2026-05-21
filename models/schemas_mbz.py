@@ -68,6 +68,15 @@ class RecordingMbz(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "score": self.score,
+            "title": self.title,
+            "length": self.length or 0,
+            "artist_credit": self.artist_credit,
+            "releases": self.releases
+        }
 
 # ---------------------------------------------------------------------------
 # Modelo de la respuesta completa

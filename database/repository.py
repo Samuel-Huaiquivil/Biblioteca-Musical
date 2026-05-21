@@ -116,7 +116,8 @@ def busqueda_avanzada(titulo: str, artista: str, db: Path | None = None) -> Dict
                 """
                 SELECT a.id_artista, c.id_cancion
                 FROM Artistas a
-                JOIN Canciones c ON a.id_artista = c.id_artista
+                JOIN Artistas_Canciones ac ON a.id_artista = ac.id_artista
+                JOIN Canciones c ON ac.id_cancion = c.id_cancion
                 WHERE a.nombre_artista = ? AND c.titulo_cancion = ?
                 """,
                 (artista, titulo)

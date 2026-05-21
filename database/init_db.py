@@ -3,7 +3,7 @@
 
 from pathlib import Path
 from config.settings import get_connection
-from config.settings import DB_PATH
+from config.setup import DB_PATH
 
 SQL_PATH = Path(__file__).parent.parent / "models" / "SQL" / "SQLite3_v3.sql"
 
