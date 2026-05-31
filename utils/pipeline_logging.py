@@ -1,5 +1,6 @@
 # utils/pipeline_logging.py
 # Sistema de logging mejorado con timestamps, niveles y contexto por canción.
+# Mejoras: detallar cada error. Automatizar el salida de información. Generar una lista de diccionarios.
 
 import logging
 from datetime import datetime

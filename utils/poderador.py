@@ -1,6 +1,5 @@
 # utils/ponderador.py
 # Evalúa y selecciona el mejor diccionario iTunes de una lista de resultados.
-import math
 from difflib import SequenceMatcher
 from collections import Counter
 from typing import List
@@ -32,6 +31,10 @@ def _puntaje_completitud(dicc: dict) -> float:
     """Puntaje 0-1 según qué campos importantes están presentes."""
     suma = sum(peso for clave, peso in _PESOS_COMPLETITUD.items() if dicc.get(clave))
     return round(suma / _PESO_TOTAL, 2)
+
+def _puntaje_similitud(palabra_referencia: str, palabra: str) -> float:
+    """Puntaje 0-1 (ratio) dependiendo de la similitud"""
+    return SequenceMatcher(None, palabra_referencia, palabra).ratio()
 
 def es_compilacion(dicc: dict) -> bool:
     """
@@ -80,8 +83,9 @@ def obtener_mejor_diccionario(lista: List[dict], titulo_referencia: str, artista
     Criterios (suma de puntos):
     - Artista más frecuente en la lista: +5
     - Título de canción más frecuente: +10
-    - Fecha de lanzamiento más antigua (original): +20
+    - Fecha de lanzamiento más antigua (original): +40
     - Completitud de campos: +0 a +85 (según _puntaje_completitud)
+    - Similitud con la referencia: +0 a +50
     - Penalización si es compilación: -30
     """
     if not lista:
@@ -96,7 +100,7 @@ def obtener_mejor_diccionario(lista: List[dict], titulo_referencia: str, artista
     canciones = [d.get("trackName", "") for d in candidatos]
     fechas = [d.get("releaseDate", "") for d in candidatos]
 
-    moda_artista = Counter(artistas).most_common(1)[0][0]
+    moda_artista = Counter(artistas + [artista_referencia]).most_common(1)[0][0]
     moda_cancion = Counter(canciones).most_common(1)[0][0]
     fecha_minima = min(f for f in fechas if f)
 
@@ -119,8 +123,10 @@ def obtener_mejor_diccionario(lista: List[dict], titulo_referencia: str, artista
         # Similitudes del titulo
         titulo_cancion = dicc.get("trackName")
         if titulo_cancion:
-            similitud_cancion = SequenceMatcher(None, titulo_referencia, titulo_cancion).ratio()
-            puntaje += math.trunc(similitud_cancion * 50)
+            puntaje += _puntaje_similitud(
+                palabra_referencia=titulo_referencia, 
+                palabra=titulo_cancion
+                ) * 50
 
         # Penalizar compilaciones
         if es_compilacion(dicc):

@@ -5,7 +5,7 @@
 from datetime import date
 from typing import List
 
-from models.schemas import Album, Cancion, DatosCaratula, GrupoArtistas, Genero, RespuestaItunes
+from models.schemas import Album, Cancion, Caratula, DatosCaratula, GrupoArtistas, Genero, RespuestaItunes
 from utils.parsear_artistas import parsear_artistas
 
 
@@ -18,10 +18,10 @@ def convertir_a_genero(resp: RespuestaItunes) -> Genero:
     return Genero(nombre=resp.primaryGenreName or "Desconocido")
 
 
-def convertir_a_album(resp: RespuestaItunes, single: bool = False) -> Album:
+def convertir_a_album_mult(resp: RespuestaItunes, single: bool = False) -> Album:
     """
     Extrae los datos del álbum de la respuesta iTunes.
-    El título del álbum puede contener colaboraciones en singles
+    El título del álbum puede contener colaboraciones en singles o múltiples artistas
     (ej: 'Canción - EP'), se toma solo la primera parte.
     """
     fecha = date.fromisoformat(resp.releaseDate[:10])
@@ -34,7 +34,23 @@ def convertir_a_album(resp: RespuestaItunes, single: bool = False) -> Album:
         titulo=titulo_limpio,
         lanzamiento=fecha,
         codigo_itunes=resp.collectionId,
-        num_pistas=resp.trackCount,
+        pistas_totales=resp.trackCount,
+        explicito=_explicito(resp.collectionExplicitness),
+    )
+
+
+def convertir_a_album_solo(resp: RespuestaItunes) -> Album:
+    """
+    Extrae los datos del álbum de la respuesta iTunes.
+    El título del álbum puede contener colaboraciones en singles
+    (ej: 'Canción - EP'), se toma solo la primera parte.
+    """
+    fecha = date.fromisoformat(resp.releaseDate[:10])
+    return Album(
+        titulo=resp.collectionName,
+        lanzamiento=fecha,
+        codigo_itunes=resp.collectionId,
+        pistas_totales=resp.trackCount,
         explicito=_explicito(resp.collectionExplicitness),
     )
 
@@ -57,10 +73,14 @@ def convertir_a_cancion(resp: RespuestaItunes, single: bool = False) -> Cancion:
         )
 
 
-def convertir_a_datos_caratula(resp: RespuestaItunes) -> DatosCaratula:
-    return DatosCaratula(
+def convertir_a_caratula(resp: RespuestaItunes, hd: bool = False) -> Caratula:
+    if hd:
+        url = resp.artworkUrl100.replace("100x100bb", "600x600bb")
+    else:
+        url = resp.artworkUrl100
+    return Caratula(
         codigo_album=resp.collectionId,
-        url_caratula=resp.artworkUrl100,
+        url_caratula=url,
         imagen=None
     )
 
@@ -98,16 +118,9 @@ def convertir_a_grupo_artistas(resp: RespuestaItunes, single: bool = False) -> G
     feat = feat_raw[1:] if len(feat_raw) > 1 else []
 
     if single:
-        # Gestión si un album es single
         artistas = parsear_artistas(resp.artistName)
-        if artistas:
-            nombre_principal =  artistas.pop(0)
-            colaboradores: List[str] = []
-            if resp.artistName != nombre_principal:
-                colaboradores = parsear_artistas(resp.artistName)
-                colaboradores.pop(0)
-
-        # Quitamos el Single si va al final
+        nombre_principal = artistas.pop(0) if artistas else resp.artistName
+        colaboradores = artistas  # lo que queda después del pop ya son los colaboradores
         if len(feat) > 1 and "single" in feat[-1].lower():
             feat.pop(-1)
 
@@ -121,30 +134,29 @@ def convertir_a_grupo_artistas(resp: RespuestaItunes, single: bool = False) -> G
 
 def convertir_a_artista_solo(resp: RespuestaItunes) -> GrupoArtistas:
     "Se utiliza para NO parsear el título del album o los duetos."
-    nombre_principal = resp.artistName
-    codigo = resp.artistId
     return GrupoArtistas(
-        principal=nombre_principal,
-        codigo_itunes=codigo,
+        principal=resp.artistName,
+        codigo_itunes=resp.artistId,
         colaboradores=None,
         feat=None
     )
 
 
-def convertir_respuesta(resp: RespuestaItunes) -> dict:
+def convertir_respuesta_arts(resp: RespuestaItunes) -> dict:
     """
     Punto de entrada principal. Convierte una RespuestaItunes validada
     a un diccionario con todos los modelos del dominio.
+    Parsea los artistas y el nombre del Álbum
     """
     return {
         "genero": convertir_a_genero(resp),
         "artistas": convertir_a_grupo_artistas(resp),
-        "album": convertir_a_album(resp),
+        "album": convertir_a_album_mult(resp),
         "cancion": convertir_a_cancion(resp),
     }
 
 
-def convertir_respuesta_simple(resp: RespuestaItunes) -> dict:
+def convertir_respuesta_smp(resp: RespuestaItunes) -> dict:
     """
     Punto de entrada principal. Convierte una RespuestaItunes validada
     a un diccionario con todos los modelos del dominio.
@@ -154,7 +166,7 @@ def convertir_respuesta_simple(resp: RespuestaItunes) -> dict:
     return {
         "genero": convertir_a_genero(resp),
         "artistas": convertir_a_artista_solo(resp),
-        "album": convertir_a_album(resp),
+        "album": convertir_a_album_solo(resp),
         "cancion": convertir_a_cancion(resp),
     }
 
@@ -169,6 +181,6 @@ def convertir_respuesta_album_single(resp: RespuestaItunes) -> dict:
     return {
         "genero": convertir_a_genero(resp),
         "artistas": convertir_a_grupo_artistas(resp, True),
-        "album": convertir_a_album(resp, True),
+        "album": convertir_a_album_mult(resp, True),
         "cancion": convertir_a_cancion(resp, True),
     }

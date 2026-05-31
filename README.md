@@ -8,7 +8,7 @@ Esto se realiza gracias a la búsqueda de canciones a través de APIs como iTune
 
 La funcion principal del script es 'procesar_canciones', la cual toma una lista de canciones y procesa cada una de ellas para obtener la información necesaria y actualizar los tags ID3.
 
-ruta_principal : Ruta principal donde se encuentran las canciones a procesar. El script buscará recursivamente en esta ruta para encontrar todas las canciones.
+ruta_principal : Ruta principal donde se encuentran las canciones a procesar. El script buscará en esta ruta para encontrar todas las canciones en esta carpeta.
     
 nivel_busqueda : Nivel de búsqueda para encontrar la canción en las APIs. Es un valor del 1 al 5 en donde 1 es una búsqueda rápida y 5 es una búsqueda exhaustiva.
     

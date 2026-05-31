@@ -152,6 +152,7 @@ def obtener_caratula(
     titulo: str,
     artista: str,
     uuid_release: str | None = None,
+    descargar: bool = False
 ) -> bytes | None:
     """
     Descarga la carátula frontal de un álbum desde Cover Art Archive.

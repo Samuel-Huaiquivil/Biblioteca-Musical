@@ -1,12 +1,13 @@
 # Funciones adicionales.
 
-from typing import Dict, Any, Optional
+from typing import Optional
 from pathlib import Path
 
 from config.settings import get_connection
-from models.schemas import GrupoArtistas, Genero, Cancion, Album
+from models.schemas import Caratula, Contenedor, GrupoArtistas, Genero, Cancion, Album
+from utils.errores import ErrorBaseDatos
 
-def creacion_de_clases(id_cancion: int, base_datos: Path | None = None) -> Optional[Dict[str, Any]]:
+def creacion_de_clases(id_cancion: int, base_datos: Path | None = None) -> Contenedor:
     """
     Recupera los datos de una canción mediante su ID y los estructura en modelos Pydantic.
     """
@@ -27,7 +28,7 @@ def creacion_de_clases(id_cancion: int, base_datos: Path | None = None) -> Optio
         datos_base = cursor.execute(query_base, (id_cancion,)).fetchone()
 
         if not datos_base:
-            return None
+            raise ErrorBaseDatos("Error al obtener los datos")
 
         # 2. Consultamos la tabla pivote para traer todos los artistas de esta canción
         query_artistas = '''
@@ -77,10 +78,19 @@ def creacion_de_clases(id_cancion: int, base_datos: Path | None = None) -> Optio
         feat=feats if feats else None
     )
 
-    # Devolvemos el diccionario validado
-    return {
-        "artistas": clase_artista,
-        "cancion": clase_cancion,
-        "genero": clase_genero,
-        "album": clase_album
-    }
+    # Devolvemos el Contenedor validado
+    return Contenedor(
+        genero=clase_genero,
+        artistas=clase_artista,
+        album=clase_album,
+        cancion=clase_cancion,
+        album_revisado=True,
+        cancion_estado=True
+    )
+
+def creacion_de_caratula(album: Album, base_datos: Path | None = None) -> Caratula:
+    return Caratula(
+        codigo_album=album.codigo_itunes,
+        url_caratula="",
+        imagen=None
+    )

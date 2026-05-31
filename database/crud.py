@@ -16,7 +16,7 @@ from utils.errores import ErrorBaseDatos
 # Tipo de fila retornada por SQLite
 Fila = dict[str, Any]
 
-ESTADOS_VALIDOS = {"Pendiente", "Revision", "Finalizado"}
+#ESTADOS_VALIDOS = {"Pendiente", "Revision", "Finalizado"}
 
 
 # ---------------------------------------------------------------------------
@@ -37,38 +37,38 @@ def _filas_a_dict(cursor, filas: list[tuple]) -> list[Fila]:
 # READ — Consultas
 # ===========================================================================
 
-def listar_canciones(estado: str | None = None, db: Path | None = None) -> list[Fila]:
+def listar_canciones(revisado: bool | None = None, db: Path | None = None) -> list[Fila]:
     """
     Lista canciones. Si se pasa estado, filtra por él.
-    estado: 'Pendiente' | 'Revision' | 'Finalizado' | None (todas)
+    revisado: True | False | None (todas)
     """
-    if estado and estado not in ESTADOS_VALIDOS:
-        raise ValueError(f"Estado inválido: '{estado}'. Opciones: {ESTADOS_VALIDOS}")
     try:
         with get_connection(db) as conn:
-            if estado:
+            if revisado is not None:
                 cursor = conn.execute(
-                    """SELECT c.id_cancion, c.titulo_cancion, c.estado,
+                    """SELECT c.id_cancion, c.titulo_cancion, c.revisado,
                               a.titulo_album, ar.nombre_artista
                        FROM Canciones c
-                       LEFT JOIN Albumes a  ON c.id_album  = a.id_album
+                       LEFT JOIN Canciones_Albumes ca ON c.id_cancion = ca.id_cancion
+                       LEFT JOIN Albumes a  ON ca.id_album  = a.id_album
                        LEFT JOIN Artistas_Canciones ac ON c.id_cancion = ac.id_cancion
                                                       AND ac.rol_artista = 'Principal'
                        LEFT JOIN Artistas ar ON ac.id_artista = ar.id_artista
-                       WHERE c.estado = ?
-                       ORDER BY ar.nombre_artista, a.titulo_album, c.numero_pista""",
-                    (estado,)
+                       WHERE c.revisado = ?
+                       ORDER BY ar.nombre_artista, a.titulo_album, ca.numero_cancion""",
+                    (revisado,)
                 )
             else:
                 cursor = conn.execute(
-                    """SELECT c.id_cancion, c.titulo_cancion, c.estado,
+                    """SELECT c.id_cancion, c.titulo_cancion, c.revisado,
                               a.titulo_album, ar.nombre_artista
                        FROM Canciones c
-                       LEFT JOIN Albumes a  ON c.id_album  = a.id_album
+                       LEFT JOIN Canciones_Albumes ca ON c.id_cancion = ca.id_cancion
+                       LEFT JOIN Albumes a  ON ca.id_album  = a.id_album
                        LEFT JOIN Artistas_Canciones ac ON c.id_cancion = ac.id_cancion
                                                       AND ac.rol_artista = 'Principal'
                        LEFT JOIN Artistas ar ON ac.id_artista = ar.id_artista
-                       ORDER BY ar.nombre_artista, a.titulo_album, c.numero_pista"""
+                       ORDER BY ar.nombre_artista, a.titulo_album, c.numero_cancion"""
                 )
             return _filas_a_dict(cursor, cursor.fetchall())
     except Exception as e:
@@ -125,12 +125,13 @@ def listar_canciones_por_artista(nombre_artista: str, db: Path | None = None) ->
     try:
         with get_connection(db) as conn:
             cursor = conn.execute(
-                """SELECT c.id_cancion, c.titulo_cancion, c.estado,
+                """SELECT c.id_cancion, c.titulo_cancion, c.revisado,
                           ac.rol_artista, a.titulo_album
                    FROM Canciones c
                    JOIN Artistas_Canciones ac ON c.id_cancion  = ac.id_cancion
                    JOIN Artistas ar           ON ac.id_artista = ar.id_artista
-                   LEFT JOIN Albumes a        ON c.id_album    = a.id_album
+                   LEFT JOIN Canciones_Artistas ON c.id_cancion = ca.id_cancion 
+                   LEFT JOIN Albumes a        ON ca.id_album    = a.id_album
                    WHERE ar.nombre_artista = ?
                    ORDER BY a.titulo_album, c.numero_pista""",
                 (nombre_artista,)
@@ -164,8 +165,10 @@ def obtener_cancion(id_cancion: int, db: Path | None = None) -> Fila | None:
             cursor = conn.execute(
                 """SELECT c.*, a.titulo_album, g.nombre_genero
                    FROM Canciones c
-                   LEFT JOIN Albumes a ON c.id_album  = a.id_album
-                   LEFT JOIN Generos g ON c.id_genero = g.id_genero
+                   LEFT JOIN Canciones_Albumes ca ON c.id_cancion = ca.id_cancion
+                   LEFT JOIN Albumes a ON ca.id_album  = a.id_album
+                   LEFT JOIN Generos_Canciones gc ON c.id_cancion = gc.id_cancion
+                   LEFT JOIN Generos g ON gc.id_genero = g.id_genero
                    WHERE c.id_cancion = ?""",
                 (id_cancion,)
             )
@@ -179,27 +182,23 @@ def obtener_cancion(id_cancion: int, db: Path | None = None) -> Fila | None:
 # UPDATE — Actualizaciones
 # ===========================================================================
 
-def actualizar_estado_cancion(id_cancion: int, nuevo_estado: str,
-                               db: Path | None = None) -> None:
+def actualizar_estado_cancion(id_cancion: int, revisado: bool = True, db: Path | None = None) -> None:
     """
     Cambia el estado de una canción.
-    nuevo_estado: 'Pendiente' | 'Revision' | 'Finalizado'
+    revisado: True | False 
     """
-    if nuevo_estado not in ESTADOS_VALIDOS:
-        raise ValueError(f"Estado inválido: '{nuevo_estado}'. Opciones: {ESTADOS_VALIDOS}")
     try:
         with get_connection(db) as conn:
             conn.execute(
-                "UPDATE Canciones SET estado = ? WHERE id_cancion = ?",
-                (nuevo_estado, id_cancion)
+                "UPDATE Canciones SET revisado = ? WHERE id_cancion = ?",
+                (revisado, id_cancion)
             )
             conn.commit()
     except Exception as e:
         raise ErrorBaseDatos(f"Error al actualizar estado de canción id={id_cancion}.") from e
 
 
-def marcar_album_revisado(id_album: int, revisado: bool = True,
-                           db: Path | None = None) -> None:
+def marcar_album_revisado(id_album: int, revisado: bool = True, db: Path | None = None) -> None:
     """Marca o desmarca un álbum como revisado."""
     try:
         with get_connection(db) as conn:
@@ -287,7 +286,7 @@ def eliminar_album_completo(id_album: int, db: Path | None = None) -> None:
         with get_connection(db) as conn:
             # 1. Obtener IDs de canciones del álbum
             filas = conn.execute(
-                "SELECT id_cancion FROM Canciones WHERE id_album = ?", (id_album,)
+                "SELECT id_cancion FROM Canciones_Albumes WHERE id_album = ?", (id_album,)
             ).fetchall()
             ids_canciones = [f[0] for f in filas]
 
@@ -300,8 +299,8 @@ def eliminar_album_completo(id_album: int, db: Path | None = None) -> None:
                     "DELETE FROM Canciones_Playlist WHERE id_cancion = ?", (id_c,)
                 )
 
-            # 3. Eliminar canciones
-            conn.execute("DELETE FROM Canciones WHERE id_album = ?", (id_album,))
+            # 3. Eliminar canciones relacionadas
+            conn.execute("DELETE FROM Canciones_Albumes WHERE id_album = ?", (id_album,))
 
             # 4. Eliminar carátula si existe
             conn.execute("DELETE FROM Caratulas WHERE id_album = ?", (id_album,))

@@ -25,7 +25,7 @@ class Album(BaseModel):
     titulo: str = Field(default="Álbum Desconocido")
     lanzamiento: date = Field(default=date(2000, 1, 1))
     codigo_itunes: int = Field(default=0)
-    num_pistas: int = Field(default=1)
+    pistas_totales: int = Field(default=1)
     explicito: bool = Field(default=False)
     codigo_mbz: Optional[str] = Field(default=None)
 
@@ -36,9 +36,13 @@ class Cancion(BaseModel):
     codigo_itunes: int = Field(default=0)
     codigo_mbz: Optional[str] = Field(default=None) 
 
+class Caratula(BaseModel):
+    codigo_album: int
+    url_caratula: str
+    imagen: Optional[bytes]
 
 # ---------------------------------------------------------------------------
-# Modelo para inserción ID3 (lo que va al archivo .mp3)
+# Modelo para inserción ID3 (archivo .mp3)
 # ---------------------------------------------------------------------------
 
 class DatosMusica(BaseModel):
@@ -54,9 +58,8 @@ class DatosMusica(BaseModel):
 
 class DatosCaratula(BaseModel):
     """Bytes de la carátula asociada a un álbum."""
-    codigo_album: int
-    url_caratula: str
-    imagen: Optional[bytes] = None
+    cod_album: int
+    imagen_bytes: bytes
 
 # ---------------------------------------------------------------------------
 # Modelo de validación de respuesta iTunes
@@ -97,3 +100,103 @@ class RespuestaItunes(BaseModel):
     discNumber: int = 1
     trackTimeMillis: int = 0
     isStreamable: bool = False
+
+# ---------------------------------------------------------------------------
+# Modelo para insertar datos. Tiene una estructura definida
+# ---------------------------------------------------------------------------
+
+class Contenedor(BaseModel):
+    "Clase Contenedor"
+    genero: Genero
+    artistas: GrupoArtistas
+    album: Album
+    cancion: Cancion
+    album_revisado: bool = Field(default=False)
+    cancion_estado: bool = Field(default=False)
+
+# ---------------------------------------------------------------------------
+# Clases de Salida para la Base de datos datos.
+# ---------------------------------------------------------------------------
+
+class SalidaArtista(BaseModel):
+    id_local: int
+    nombre: str
+    codigo_itunes: Optional[int]
+    codigo_mbz: Optional[str]
+
+    def coincide_con(self, artista: Artista) -> bool:
+        """
+        Compara los datos locales con los de entrada.
+        Prioriza código iTunes sobre nombre para evitar falsos positivos.
+        """
+        if self.codigo_itunes and artista.codigo_itunes:
+            return self.codigo_itunes == artista.codigo_itunes
+        if self.codigo_mbz and artista.codigo_mbz:
+            return self.codigo_mbz == artista.codigo_mbz
+        # Fallback: nombre
+        return (
+            self.nombre.lower() == artista.nombre.lower()
+        )
+
+class SalidaCancion(BaseModel):
+    """Datos de una canción tal como están en la base de datos local."""
+    id_local: int
+    titulo: str
+    codigo_itunes: int
+    numero_pista: int
+    codigo_mbz: Optional[str]
+
+    def coincide_con(self, cancion: Cancion) -> bool:
+        """
+        Compara los datos locales con los de entrada.
+        Prioriza código iTunes sobre nombre para evitar falsos positivos.
+        """
+        if self.codigo_itunes and cancion.codigo_itunes:
+            return self.codigo_itunes == cancion.codigo_itunes
+        if self.codigo_mbz and cancion.codigo_mbz:
+            return self.codigo_mbz == cancion.codigo_mbz
+        # Fallback: nombre
+        return (
+            self.titulo.lower() == cancion.titulo.lower() and
+            self.numero_pista == cancion.num_pista
+        )
+
+class SalidaAlbum(BaseModel):
+    id_local: int
+    titulo: str
+    codigo_itunes: int
+    pistas_totales: int
+    lanzamiento: date
+    codigo_mbz: Optional[str]
+
+    def coincide_con(self, album: Album) -> bool:
+        """
+        Compara los datos locales con los de entrada.
+        Prioriza código iTunes sobre nombre para evitar falsos positivos.
+        """
+        if self.codigo_itunes and album.codigo_itunes:
+            return self.codigo_itunes == album.codigo_itunes
+        if self.codigo_mbz and album.codigo_mbz:
+            return self.codigo_mbz == album.codigo_mbz
+        # Fallback: nombre, pistas y lanzamiento
+        return (
+            self.titulo.lower() == album.titulo.lower() and
+            self.pistas_totales == album.pistas_totales and
+            self.lanzamiento == album.lanzamiento
+        )
+
+class SalidaCaratula(BaseModel):
+    id_local: int
+    id_album: int
+    url_caratula: str
+    imagen_bytes: Optional[bytes] = None
+
+    def tiene_url(self) -> bool:
+        return True if self.url_caratula is not None else False
+    
+    def tiene_imagen(self) -> bool:
+        if isinstance(self.imagen_bytes, bytes) and not None:
+            return True 
+        else:
+            return False
+    

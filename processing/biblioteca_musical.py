@@ -7,20 +7,19 @@ from api import musicbrainz
 from api.caratulas import obtener_caratula
 from api.gestion_itunes import busqueda_itunes_por_nivel
 from config.setup import preparar_entorno
-from database.gestion_db import creacion_de_clases
+from database.gestion_db import creacion_de_caratula, creacion_de_clases
 from database.init_db import iniciar_base_datos
-from processing.id3 import escribir_caratula, escribir_tags, modelos_a_datos_musica
-from processing.resp_itunes import revisar_diccionario
-from utils import dicc_a_clases_mbz, errores
-from database import repository
-from utils.caratulas import descargar_caratula, guardar_imagen_bytes
-from utils.dicc_a_clases import convertir_a_datos_caratula
-from utils.listar_mp3 import listar_elementos_ruta
-from utils.mover_archivo import mover_y_renombrar_cancion
-from utils.obtener_datos_cancion import obtener_datos_cancion
-from utils.poderador import obtener_mejor_diccionario, validar_respuesta_itunes
+from processing.id3 import contenedor_a_datos_musica, escribir_tags
+from processing.resp_itunes import resp_itunes
+from utils import dicc_a_clases_mbz
+from utils.caratulas import escribir_caratula, gestion_caratulas
+from utils.dicc_a_clases import convertir_a_caratula
+from utils.gestion_archivos import listar_elementos_ruta, obtener_datos_cancion, mover_y_renombrar_cancion
+from database.repository import busqueda_avanzada, guardar_cancion_pipeline
+from utils.errores import ErrorAPI, ErrorArchivo, ErrorBaseDatos, ErrorInsercion, ErrorValidacion
 from utils.error_analyzer import ErrorAnalyzer
 from utils.pipeline_logging import PipelineLogger
+from utils.poderador import obtener_mejor_diccionario, validar_respuesta_itunes
 from utils.validacion_datos import ValidadorDatos
 
 
@@ -28,7 +27,6 @@ def _registrar_error(ruta_log: Path, mensaje: str) -> None:
     """[Deprecated] Usa PipelineLogger en su lugar. Mantenido para compatibilidad."""
     with open(ruta_log, "a", encoding="utf-8") as f:
         f.write(mensaje + "\n")
-
 
 def procesar_canciones(
         ruta_principal: Path,
@@ -64,7 +62,7 @@ def procesar_canciones(
         
         try:
             datos = obtener_datos_cancion(ruta_cancion)
-        except errores.ErrorArchivo as e:
+        except ErrorArchivo as e:
             logger.error(f"[ARCHIVO] {e}", archivo=nombre_archivo, excepcion=e)
             total_errores += 1
             continue
@@ -82,23 +80,24 @@ def procesar_canciones(
 
         base_local = None
         try:
-            base_local = repository.busqueda_avanzada(titulo=titulo, artista=artista, db=ruta_db)
-        except errores.ErrorBaseDatos as e:
+            base_local = busqueda_avanzada(titulo=titulo, artista=artista, db=ruta_db)
+        except ErrorBaseDatos as e:
             logger.error(
                 f"Error en la busqueda de artista/cancion {titulo}",
                 archivo=nombre_archivo,
                 excepcion=e
             )
             total_errores += 1
-        clases = None
-        clase_caratula = None  # INICIALIZACIÓN: Evita variable indefinida
+        contenedor = None
+        caratula = None 
         
         if base_local:
             logger.cancion_encontrada_localmente(nombre_archivo, base_local["cancion"])
             # Crear las clases a través de los identificadores locales
             try:
-                clases = creacion_de_clases(id_cancion=base_local["cancion"], base_datos=ruta_db)
-            except errores.ErrorBaseDatos as e:
+                contenedor = creacion_de_clases(id_cancion=base_local["cancion"], base_datos=ruta_db)
+                caratula = creacion_de_caratula(contenedor.album, ruta_db)
+            except ErrorBaseDatos as e:
                 logger.error(
                     f"Error en la creación de clases {base_local['cancion']}",
                     archivo=nombre_archivo,
@@ -106,7 +105,7 @@ def procesar_canciones(
                 )
                 total_errores += 1
         
-        if not clases:
+        if not contenedor:
             # Búsqueda en iTunes
             logger.cancion_consultada_itunes(nombre_archivo)
             try:
@@ -121,10 +120,8 @@ def procesar_canciones(
                     artista_referencia=artista
                 )
                 if mejor_itunes:
-                    resultado_busqueda.cancion_principal.remove(mejor_itunes)
-                    
                     try:
-                        clases = revisar_diccionario(mejor_itunes)
+                        contenedor = resp_itunes(mejor_itunes, True, nivel_busqueda >=2 )
                         
                         # VALIDACIÓN PREVENTIVA: Verificar antes de guardar
                         es_valido, error_validacion = validador.validar_clases_completas(clases)
@@ -141,15 +138,7 @@ def procesar_canciones(
                             total_errores += 1
                             continue
                         
-                        guardado = repository.guardar_cancion_completa(
-                            genero=clases["genero"],
-                            artistas=clases["artistas"],
-                            album=clases["album"],
-                            cancion=clases["cancion"],
-                            estado="Finalizado",
-                            alb_rev=False,
-                            db=ruta_db
-                        )
+                        guardado = guardar_cancion_pipeline(contenedor, ruta_db)
                         if not guardado:
                             # FIX: Era 'resultado' (undefined), ahora 'mejor_itunes'
                             logger.error(
@@ -164,10 +153,11 @@ def procesar_canciones(
                             total_errores += 1
                             continue
                         
-                        respuesta_validada = validar_respuesta_itunes(mejor_itunes)
-                        clase_caratula = convertir_a_datos_caratula(respuesta_validada)
-                        
-                    except errores.ErrorValidacion as e:
+                        val = validar_respuesta_itunes(mejor_itunes)
+                        caratula = convertir_a_caratula(val)
+                        resultado_busqueda.cancion_principal.remove(mejor_itunes)
+                    
+                    except ErrorValidacion as e:
                         logger.error(
                             f"Error validación iTunes: {e}",
                             archivo=nombre_archivo,
@@ -184,42 +174,17 @@ def procesar_canciones(
                 # Guardar cada diccionario validado como respaldo
                 for resultado in resultado_busqueda.todas_las_canciones():
                     try:
-                        clase_var = revisar_diccionario(resultado)
+                        contenedor_aux = resp_itunes(resultado, False, False)
                         
-                        # VALIDACIÓN PREVENTIVA: Verificar antes de guardar
-                        es_valido, error_validacion = validador.validar_clases_completas(clase_var)
-                        if not es_valido:
-                            logger.warning(
-                                f"Validación fallida (respaldo iTunes): {error_validacion}",
-                                archivo=nombre_archivo
-                            )
-                            error_analyzer.registrar_error_validacion(
-                                diccionario=resultado,
-                                detalle=error_validacion or "",
-                                nombre_archivo=nombre_archivo
-                            )
-                            continue
-                        
-                        guardado = repository.guardar_cancion_completa(
-                            genero=clase_var["genero"],
-                            artistas=clase_var["artistas"],
-                            album=clase_var["album"],
-                            cancion=clase_var["cancion"],
-                            estado="Pendiente",
-                            alb_rev=False,
-                            db=ruta_db
-                        )
+                        guardado = guardar_cancion_pipeline(contenedor_aux, ruta_db)
                         if guardado:
-                            respuesta_itunes = validar_respuesta_itunes(resultado)
-                            clase_caratula_var = convertir_a_datos_caratula(respuesta_itunes)
-                            repository.guardar_caratula(
-                                album=clase_var["album"],
-                                genero=clase_var["genero"],
-                                artistas=clase_var["artistas"],
-                                caratula=clase_caratula_var,
-                                img_bytes=False,
-                                db=ruta_db
-                            )
+                            val_aux = validar_respuesta_itunes(resultado)
+                            caratula_aux = convertir_a_caratula(val_aux)
+                            sal = gestion_caratulas(caratula_aux, rutas_caratulas, ruta_db)
+                            if not sal:
+                                logger.error(
+                                    f"No se guardo la carátula"
+                                )
                         else:
                             logger.debug(
                                 f"No se guardó respaldo de iTunes",
@@ -230,7 +195,7 @@ def procesar_canciones(
                                 detalle="Falló guardar como respaldo",
                                 nombre_archivo=nombre_archivo
                             )
-                    except errores.ErrorInsercion as e:
+                    except ErrorInsercion as e:
                         logger.debug(
                             f"Error inserción respaldo iTunes: {e}",
                             archivo=nombre_archivo
@@ -241,7 +206,7 @@ def procesar_canciones(
                             nombre_archivo=nombre_archivo
                         )
                         
-            except errores.ErrorAPI as e:
+            except ErrorAPI as e:
                 logger.error(
                     f"[iTunes] Error búsqueda: {e}",
                     archivo=nombre_archivo,
@@ -279,7 +244,7 @@ def procesar_canciones(
                     )
                     total_errores += 1
                     continue
-            except errores.ErrorAPI as e:
+            except ErrorAPI as e:
                 logger.error(
                     f"[MBZ] {e}",
                     archivo=nombre_archivo,
@@ -288,13 +253,13 @@ def procesar_canciones(
                 total_errores += 1
                 continue
         
-        # El diccionario con clases ya está definido.
-        if clases:
+        # El diccionario con contenedor ya está definido.
+        if contenedor:
             try:
-                datos_musica = modelos_a_datos_musica(clases)
+                datos_musica = contenedor_a_datos_musica(contenedor)
                 escribir_tags(ruta_cancion, datos_musica)
                 logger.debug(f"Tags ID3 escritos correctamente", archivo=nombre_archivo)
-            except errores.ErrorArchivo as e:
+            except ErrorArchivo as e:
                 logger.error(
                     f"[ID3] {e}",
                     archivo=nombre_archivo,
@@ -303,28 +268,11 @@ def procesar_canciones(
                 total_errores += 1
             
             # Gestión de carátulas.
-            if clase_caratula:  # Ahora es seguro comprobar
+            if caratula and not caratulas_mejoradas:  # Ahora es seguro comprobar
                 try:   
-                    repository.guardar_caratula(
-                        album=clases["album"],
-                        genero=clases["genero"],
-                        artistas=clases["artistas"],
-                        caratula=clase_caratula,
-                        img_bytes=descargar_caratulas,
-                        db=ruta_db
-                    )
-                    if descargar_caratulas:
-                        try:
-                            descargar_caratula(clase_caratula, rutas_caratulas)
-                        except errores.ErrorBaseDatos as e:
-                            logger.error(
-                                f"[Carátulas] {e}",
-                                archivo=nombre_archivo,
-                                excepcion=e
-                            )
-                    total_errores += 1
-                    logger.debug(f"Carátula guardada", archivo=nombre_archivo)
-                except errores.ErrorBaseDatos as e:
+                    sal = gestion_caratulas(caratula, rutas_caratulas, ruta_db)
+                    escribir_caratula(ruta_cancion, sal)
+                except ErrorBaseDatos as e:
                     logger.error(
                         f"[Carátulas] {e}",
                         archivo=nombre_archivo,
@@ -332,18 +280,17 @@ def procesar_canciones(
                     )
                     total_errores += 1
             
-            if caratulas_mejoradas and clase_caratula:
+            if caratulas_mejoradas:
                 try:
-                    album_clase = clases["album"]
-                    artista_clase = clases["artistas"]
-                    img_bytes = obtener_caratula(album_clase.titulo, artista_clase.principal)
-                    if img_bytes:
-                        clase_caratula.imagen = img_bytes
-                        escribir_caratula(ruta_cancion, clase_caratula)
-                        logger.debug(f"Carátula mejorada (Cover Archive)", archivo=nombre_archivo)
-                        if descargar_caratulas:
-                            guardar_imagen_bytes(clase_caratula, rutas_caratulas)
-                except errores.ErrorArchivo as e:
+                    img_bytes = obtener_caratula(contenedor.album.titulo, contenedor.artistas.principal)
+                    
+                    caratula = creacion_de_caratula(contenedor.album, ruta_db)
+                    caratula.imagen = img_bytes
+                    datos_caratula = gestion_caratulas(
+                        caratula, rutas_caratulas, ruta_db
+                    )
+                    escribir_caratula(ruta_cancion, datos_caratula)
+                except ErrorArchivo as e:
                     logger.warning(
                         f"[Cover Archive] {e}",
                         archivo=nombre_archivo

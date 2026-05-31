@@ -6,9 +6,10 @@
 # - User-Agent obligatorio (nombre app, versión, contacto).
 # - Rate limit: 1 petición/segundo. Sin autenticación.
 # - Formato JSON con &fmt=json.
-
+import os
 import time
 import requests
+import dotenv
 from pydantic import ValidationError
 
 from models.schemas_mbz import RespuestaMbz, RecordingMbz
@@ -16,11 +17,14 @@ from utils.errores import ErrorAPI
 
 _URL_BASE  = "https://musicbrainz.org/ws/2"
 _TIMEOUT   = 10
-_INTERVALO = 1.1   # segundos entre peticiones (respeta el rate limit)
+_INTERVALO = 1.1
 
-# MusicBrainz exige un User-Agent descriptivo. Cámbialo por tus datos.
+dotenv.load_dotenv()
+correo_personal = os.environ.get("CORREO", "correo@example.cl")
+
+
 _HEADERS = {
-    "User-Agent": "ScriptBibliotecaMusical/2.3 (raula9396@gmail.com)"
+    "User-Agent": f"ScriptBibliotecaMusical/2.3 ({correo_personal})"
 }
 
 _ultimo_request: float = 0.0
@@ -32,7 +36,6 @@ def _get(endpoint: str, params: dict) -> dict:
     """
     global _ultimo_request
 
-    # Respetar el rate limit sin bloquear más de lo necesario
     espera = _INTERVALO - (time.monotonic() - _ultimo_request)
     if espera > 0:
         time.sleep(espera)

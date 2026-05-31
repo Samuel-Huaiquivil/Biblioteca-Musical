@@ -1,13 +1,12 @@
 # processing/id3.py
 # Escribe los tags ID3 en archivos .mp3 usando los datos del dominio.
-import mimetypes
 from pathlib import Path
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
 from mutagen.id3._util import ID3NoHeaderError
 from mutagen.id3._frames import TIT1, TIT2, TIT3, TPE1, TPE2, TALB, TDRC, TRCK, TCON, TPOS, APIC
 
-from models.schemas import DatosMusica, DatosCaratula
+from models.schemas import Contenedor, DatosMusica, DatosCaratula, SalidaCaratula
 from utils.errores import ErrorArchivo
 
 
@@ -108,7 +107,7 @@ def limpiar_tags(ruta: Path) -> None:
 # Conversión desde modelos del dominio
 # ---------------------------------------------------------------------------
 
-def modelos_a_datos_musica(clases: dict) -> DatosMusica:
+def contenedor_a_datos_musica(contenedor: Contenedor) -> DatosMusica:
     """
     Convierte el diccionario de clases del dominio al modelo DatosMusica
     listo para escribir con escribir_tags().
@@ -121,10 +120,10 @@ def modelos_a_datos_musica(clases: dict) -> DatosMusica:
         'cancion':  Cancion,
     }
     """
-    genero = clases["genero"]
-    artistas = clases["artistas"]
-    album = clases["album"]
-    cancion = clases["cancion"]
+    genero = contenedor.genero
+    artistas = contenedor.artistas
+    album = contenedor.album
+    cancion = contenedor.cancion
 
     return DatosMusica(
         titulo=cancion.titulo,
@@ -136,166 +135,3 @@ def modelos_a_datos_musica(clases: dict) -> DatosMusica:
         genero=genero.nombre,
     )
 
-# ---------------------------------------------------------------------------
-# Gestión de carátulas
-# ---------------------------------------------------------------------------
-
-def escribir_caratula(ruta: Path, caratula: DatosCaratula) -> None:
-    """
-    Inserta la carátula del álbum como tag APIC en el archivo .mp3.
-    Llama a esta función por separado para mantener la lógica de imagen
-    desacoplada de los tags de texto.
-
-    APIC type=3 → Cover (front) — el tipo que usan todos los reproductores.
-    """
-    if not ruta.exists():
-        raise ErrorArchivo(str(ruta), "El archivo no existe.")
-
-    try:
-        tags = _cargar_id3(ruta)
-
-        tags["APIC:"] = APIC(
-            encoding=3,         # UTF-8
-            mime="image/jpeg",  # la mayoría de carátulas de iTunes son JPEG
-            type=3,             # Cover (front)
-            desc="Cover",
-            data=caratula.imagen,
-        )
-
-        tags.save(ruta, v2_version=3)
-
-    except Exception as e:
-        raise ErrorArchivo(str(ruta), f"Error al escribir carátula: {e}") from e
-
-
-def insertar_caratula_desde_ruta(archivo_mp3: Path, ruta_img: Path) -> bool:
-    "Inserta una carátula desde una imagen descargada"
-    if not archivo_mp3.exists():
-        raise ErrorArchivo(str(archivo_mp3), "El archivo no existe.")
-    
-    if not ruta_img.exists():
-        raise ErrorArchivo(str(ruta_img), "La imagen no existe.")
-
-    try:
-        tags = _cargar_id3(archivo_mp3)
-
-        # Eliminar la carátula anterior, si es que la tiene.
-        if tags["APIC:"]:
-            del tags["APIC:"]
-
-        # Detectar el tipo de imagen.
-        mime_type, _ = mimetypes.guess_type(ruta_img)
-        if mime_type is None:
-            mime_type = "image/jpeg"
-
-        with open(ruta_img, 'rb') as img:
-            tags["APIC:"] = APIC(
-                encoding=3,              # UTF-8
-                mime=mime_type,          # tipo detectado
-                type=3,                  # portada frontal
-                desc="Cover",
-                data=img.read()
-            )
-
-        tags.save(archivo_mp3, v2_version=3)
-
-        return True
-    except Exception as e:
-        raise ErrorArchivo(str(archivo_mp3), f"Error al insertar carátula: {e}") from e
-
-
-def insertar_caratula_desde_base_datos(archivo_mp3: Path, id_caratula: int, db: Path | None) -> bool:
-    if not archivo_mp3.exists():
-        raise ErrorArchivo(str(archivo_mp3), "El archivo no existe.")
-    try:
-        from config.settings import get_connection
-        with get_connection(base_datos=db) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT imagen_bytes FROM Caratulas WHERE id_caratula = ?;", (id_caratula,)
-            )
-            fila = cursor.fetchone()
-        # Objeto en bytes cargado
-        imagen_bytes = fila[0]
-
-        # Insertar Carátula con ID3
-        tags = _cargar_id3(archivo_mp3)
-        # Eliminar la carátula anterior, si es que existe.
-        if tags["APIC:"]:
-            del tags["APIC:"]
-
-        tags["APIC:"] = APIC(
-            encoding=3,         # UTF-8
-            mime="image/jpeg",  # la mayoría de carátulas de iTunes son JPEG
-            type=3,             # Cover (front)
-            desc="Cover",
-            data=imagen_bytes,
-        )
-
-        tags.save(archivo_mp3, v2_version=3)
-
-        return True
-    except Exception as e:
-        raise ErrorArchivo(str(archivo_mp3), f"Error al insertar carátula: {e}") from e
-
-
-def insertar_caratula_desde_datos_caratula(archivo_mp3: Path, caratula: DatosCaratula) -> bool:
-    """
-    Inserta la carátula del álbum como tag APIC en el archivo .mp3.
-    """
-    if not archivo_mp3.exists():
-        raise ErrorArchivo(str(archivo_mp3), "El archivo no existe.")
-
-    if caratula.imagen:
-        try:
-            tags = _cargar_id3(archivo_mp3)
-
-            # Eliminar la carátula anterior, si es que la tiene.
-            if tags["APIC:"]:
-                del tags["APIC:"]
-
-            tags["APIC:"] = APIC(
-                encoding=3,         # UTF-8
-                mime="image/jpeg",  # la mayoría de carátulas de iTunes son JPEG
-                type=3,             # Cover (front)
-                desc="Cover",
-                data=caratula.imagen,
-            )
-
-            tags.save(archivo_mp3, v2_version=3)
-
-            return True
-        
-        except Exception as e:
-            raise ErrorArchivo(str(archivo_mp3), f"Error al escribir carátula: {e}") from e
-    
-    else:
-        try:
-            import requests
-            response = requests.get(caratula.url_caratula, timeout=10, stream=True)
-            if response.status_code == 200:
-                imagen_bytes = response.content
-            else:
-                raise Exception(f"Error al descargar carátula iTunes.")
-
-            tags = _cargar_id3(archivo_mp3)
-
-            # Eliminar la carátula anterior, si es que la tiene.
-            if tags["APIC:"]:
-                del tags["APIC:"]
-
-            tags["APIC:"] = APIC(
-                encoding=3,         # UTF-8
-                mime="image/jpeg",  # la mayoría de carátulas de iTunes son JPEG
-                type=3,             # Cover (front)
-                desc="Cover",
-                data=imagen_bytes,
-            )
-
-            tags.save(archivo_mp3, v2_version=3)
-
-            return True
-
-        except Exception as e:
-            raise ErrorArchivo(str(archivo_mp3), f"Error al escribir carátula: {e}") from e
-    
