@@ -1,0 +1,5 @@
+Arquitectura de Software
+Capa de transformacion de datos
+Anti-Corruption Layer
+Estrategia 'Dead Letter Queue'
+Adapter / Service Layer

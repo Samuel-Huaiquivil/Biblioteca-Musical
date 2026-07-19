@@ -5,7 +5,7 @@
 import requests
 from typing import Any
 
-from models.schemas import RespuestaItunes
+from models.schemas_api import RespuestaItunes
 from utils.errores import ErrorAPI
 from utils.poderador import propiedades_minimas
 

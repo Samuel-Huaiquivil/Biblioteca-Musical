@@ -66,7 +66,7 @@ def cmd_listar(args: argparse.Namespace) -> None:
     """
     Listar registros de la base de datos.
     --tipo: canciones | albumes | artistas | sin_caratula
-    --estado: Pendiente | Revision | Finalizado  (solo para canciones)
+    --revisado: True | False 
     --artista: nombre del artista (filtra canciones por artista)
     """
     tipo = args.tipo or "canciones"
@@ -76,15 +76,20 @@ def cmd_listar(args: argparse.Namespace) -> None:
             filas = crud.listar_canciones_por_artista(args.artista, db)
             print(f"\nCanciones de '{args.artista}':")
         else:
-            filas = crud.listar_canciones(estado=args.estado, db=db)
-            titulo = f"Canciones — estado: {args.estado or 'todos'}"
+            estado = None
+            if args.estado == True:
+                estado = True
+            elif args.estado == False:
+                estado = False
+            filas = crud.listar_canciones(revisado=estado, db=db)
+            titulo = f"Canciones — revisado: {estado or 'todos'}"
             print(f"\n{titulo}:")
 
     elif tipo == "albumes":
         revisado = None
-        if args.estado == "revisado":
+        if args.estado == True:
             revisado = True
-        elif args.estado == "sin_revisar":
+        elif args.estado == False:
             revisado = False
         filas = crud.listar_albumes(revisado=revisado, db=db)
         print(f"\nÁlbumes:")
@@ -231,7 +236,7 @@ Ejemplos:
     # estado
     p_estado = subparsers.add_parser("estado", help="Cambiar estado de una canción.")
     p_estado.add_argument("--id", type=int, required=True)
-    p_estado.add_argument("--valor", required=True, choices=["Pendiente", "Revision", "Finalizado"])
+    p_estado.add_argument("--valor", action="store_true", help="Cambia el estado")
 
     # revisado
     p_rev = subparsers.add_parser("revisado", help="Marcar/desmarcar álbum como revisado.")

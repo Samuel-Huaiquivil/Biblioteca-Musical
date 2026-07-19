@@ -6,14 +6,14 @@ from datetime import date
 from typing import List
 
 from models.schemas import Album, Cancion, GrupoArtistas, Genero
-from models.schemas_mbz import RecordingMbz, ReleaseMbz, ArtistCreditMbz
+from models.schemas_api import RecordingMbz, ReleaseMBZ, ArtistCreditMBZ
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _mejor_release(recording: RecordingMbz) -> ReleaseMbz | None:
+def _mejor_release(recording: RecordingMbz) -> ReleaseMBZ | None:
     """Retorna el release oficial más antiguo, o el primero disponible."""
     oficiales = [r for r in recording.releases if r.status.lower() == "official"]
     candidatos = oficiales or recording.releases
@@ -38,7 +38,7 @@ def _parsear_fecha(fecha_str: str) -> date:
     return date(anio, mes, dia)
 
 
-def _extraer_artistas(credits: List[ArtistCreditMbz]) -> tuple[str, List[str], List[str]]:
+def _extraer_artistas(credits: List[ArtistCreditMBZ]) -> tuple[str, List[str], List[str]]:
     """
     Interpreta la lista artist-credit de MusicBrainz.
 
@@ -98,7 +98,7 @@ def convertir_a_album_mbz(recording: RecordingMbz) -> Album:
         titulo=release.title,
         lanzamiento=_parsear_fecha(release.date),
         codigo_itunes=0,           # Sin código iTunes
-        num_pistas=release.track_count or 1,
+        pistas_totales=release.track_count or 1,
         explicito=False,           # MusicBrainz no provee este dato
         codigo_mbz=release.id,
     )

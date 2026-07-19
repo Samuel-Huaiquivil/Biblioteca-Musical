@@ -5,7 +5,7 @@ from pathlib import Path
 from config.settings import get_connection
 from config.setup import DB_PATH
 
-SQL_PATH = Path(__file__).parent.parent / "models" / "SQL" / "SQLite3_v4.sql"
+SQL_PATH = Path(__file__).parent.parent / "models" / "SQL" / "SQLite3_v5.sql"
 
 
 def iniciar_base_datos(base_datos: Path | None = DB_PATH) -> None:
@@ -18,8 +18,21 @@ def iniciar_base_datos(base_datos: Path | None = DB_PATH) -> None:
 
     sql = SQL_PATH.read_text(encoding="utf-8")
 
+
     with get_connection(base_datos) as conn:
-        conn.executescript(sql)
+        cursor = conn.cursor()
+        cursor.executescript(sql)
         conn.commit()
 
+    with get_connection(base_datos) as conn:
+        query = '''
+        INSERT OR IGNORE INTO Apis (nombre_api, region_api) VALUES (?, ?);
+        '''
+        params = [
+            ("iTunes", "USA"),
+            ("MusicBrainz", "Global"), 
+            ("MusicBrainz", "Groups")
+            ]
+        res = conn.executemany(query, params)
+        conn.commit()
     print("Base de datos cargada correctamente.")

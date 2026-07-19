@@ -1,54 +1,72 @@
-# models/schemas_mbz.py
-# Modelos Pydantic para la respuesta de la MusicBrainz API.
-# Endpoint usado: /ws/2/recording/?query=...&fmt=json
-#
-# Diferencias clave con iTunes:
-# - MusicBrainz retorna un campo "score" (0-100) por resultado.
-# - Los IDs son UUIDs (str), no enteros.
-# - Los artistas vienen como lista de objetos, no como string plano.
-# - El álbum se llama "release" y puede haber varios por recording.
-
-from typing import List, Optional
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List
 
 # ---------------------------------------------------------------------------
-# Sub-modelos (partes de un resultado)
+# Sub-modelos (partes de un resultado de MusicBrainz)
 # ---------------------------------------------------------------------------
 
-class ArtistaMbz(BaseModel):
+
+class ArtistMBZ(BaseModel):
     """Artista dentro de un artist-credit de MusicBrainz."""
-    id: str = ""                    # UUID del artista
-    name: str = ""                  # Nombre canónico
+    id: str
+    name: str
     sort_name: str = Field(default="", alias="sort-name")
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
 
-class ArtistCreditMbz(BaseModel):
+class ArtistCreditMBZ(BaseModel):
     """
     Entrada en la lista artist-credit.
     Puede ser un artista o un separador de texto (ej: ' feat. ').
     """
     name: Optional[str] = None      # Nombre tal como aparece en el crédito
-    artist: Optional[ArtistaMbz] = None
-    joinphrase: str = ""            # Separador: ' feat. ', ' & ', ' / ', etc.
+    artist: Optional[ArtistMBZ] = None
+    joinphrase: str = ""
 
 
-class ReleaseMbz(BaseModel):
-    """Álbum (release) asociado a un recording."""
-    id: str = ""                    # UUID del álbum
+class ReleaseGroupMBZ(BaseModel):
+    id: str = ""
     title: str = ""
-    date: str = ""                  # Formato: YYYY, YYYY-MM, YYYY-MM-DD
-    country: str = ""
-    status: str = ""                # 'Official', 'Bootleg', 'Promotion'
-    track_count: int = Field(default=0, alias="track-count")
+    primary_type: Optional[str] = Field(alias="primary-type", default=None)
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
+
+
+class MediaMBZ(BaseModel):
+    id: str = ""
+    position: int = 0
+    format: str = ""
+    track_count: int = Field(alias="track-count", default=0)
+    track_offset: int = Field(alias="track-offset", default=0)
+
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
+
+
+class ReleaseMBZ(BaseModel):
+    """Álbum (release) asociado a un recording."""
+    id: str = ""
+    title: str = ""
+    date: str = ""
+    country: str = ""
+    status: str = ""
+    disambiguation: Optional[str] = None
+    artist_credit: List[ArtistCreditMBZ] = Field(
+        default_factory=list,
+        alias="artist-credit"
+    )
+    track_count: int = Field(default=0, alias="track-count")
+    release_group: Optional[ReleaseGroupMBZ] = Field(default=None, alias="release-group")
+    media: List[MediaMBZ] = Field(default_factory=list)
+    
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
+
+    def __str__(self):
+        return f"Release[{self.title} - {self.id}]"
 
 
 # ---------------------------------------------------------------------------
-# Modelo principal de un resultado (recording)
+# Modelo principal de un resultado de MusicBrainz (recording)
 # ---------------------------------------------------------------------------
 
 class RecordingMbz(BaseModel):
@@ -60,13 +78,14 @@ class RecordingMbz(BaseModel):
     score: int = 0                          # Relevancia MusicBrainz (0-100)
     title: str = ""
     length: Optional[int] = None            # Duración en milisegundos
-    artist_credit: List[ArtistCreditMbz] = Field(
+    disambiguation: Optional[str] = None
+    artist_credit: List[ArtistCreditMBZ] = Field(
         default_factory=list,
         alias="artist-credit"
     )
-    releases: List[ReleaseMbz] = Field(default_factory=list)
+    releases: List[ReleaseMBZ] = Field(default_factory=list)
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
 
     def to_dict(self):
         return {
@@ -78,12 +97,8 @@ class RecordingMbz(BaseModel):
             "releases": self.releases
         }
 
-# ---------------------------------------------------------------------------
-# Modelo de la respuesta completa
-# ---------------------------------------------------------------------------
+    def __str__(self):
+        rel_str = ";".join(str(r) for r in self.releases)
+        return f"Recording[{self.title} - {self.id}] ** [Rel {rel_str}]"
 
-class RespuestaMbz(BaseModel):
-    """Respuesta completa del endpoint /ws/2/recording/"""
-    count: int = 0                          # Total de resultados en MBZ
-    offset: int = 0
-    recordings: List[RecordingMbz] = Field(default_factory=list)
+    

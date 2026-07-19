@@ -1,5 +1,7 @@
 import re
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Optional
+
 
 def normalizar_separadores(txt: str) -> str:
     """
@@ -81,4 +83,109 @@ def parsear_artistas(txt: str) -> List[str]:
     txt = normalizar_feat(txt)
     txt = limpiar_comas(txt)
     return conv_lista(txt)
+
+"""
+track_info.py
+Extrae título, artistas y versión de strings de canciones/álbumes.
+
+Diseño:
+    En vez de hacer split() sobre "feat", se aplican patrones regex con
+    grupos nombrados en cascada.  El primero que matchee gana y produce
+    un TrackInfo con semántica explícita.  El parseo de artistas lo delega
+    al pipeline de parsear_artistas.py.
+"""
+
+
+
+# ── Fragmentos de regex reutilizables ────────────────────────────────────────
+_FEAT = r"feat(?:uring)?\.?\s*|ft\.?\s*"
+
+# Palabras clave de versión — se expanden fácilmente agregando alternativas
+_VER  = (
+    r"single"
+    r"|deluxe(?:\s+edition)?"
+    r"|remaster(?:ed)?"
+    r"|live(?:\s+version)?"
+    r"|radio\s+edit"
+    r"|acoustic(?:\s+version)?"
+    r"|remix(?:\s+version)?"
+)
+
+
+_PATRONES: List[re.Pattern] = [
+    re.compile(
+        rf"^(?P<titulo>.+?)\s*"
+        rf"\(\s*(?:{_FEAT})(?P<artistas>[^)]+)\)\s*"
+        rf"(?:[–\-]\s*(?P<version>{_VER}))?\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"^(?P<titulo>.+?)\s*\(\s*(?P<version>{_VER})\s*\)\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"^(?P<titulo>.+?)\s*[–\-]\s*(?P<version>{_VER})\s*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"^(?P<titulo>.+?)\s+(?:{_FEAT})(?P<artistas>.+?)"
+        rf"(?:\s*[–\-]\s*(?P<version>{_VER}))?\s*$",
+        re.IGNORECASE,
+    ),
+]
+
+
+# ── Modelo de datos ──────────────────────────────────────────────────────────
+
+@dataclass
+class TrackInfo:
+    """
+    Resultado estructurado del parseo de un string de canción/álbum.
+
+    Campos:
+        titulo   - Título limpio (sin feat ni sufijo de versión).
+        artistas - Lista de artistas colaboradores (puede estar vacía).
+        version  - Tipo de versión si se detectó ("Single", "Live", …).
+    """
+    titulo:   str
+    artistas: List[str]     = field(default_factory=list)
+    version:  Optional[str] = None
+
+    def __str__(self) -> str:
+        partes = [f'titulo="{self.titulo}"']
+        if self.artistas:
+            partes.append(f"artistas={self.artistas}")
+        if self.version:
+            partes.append(f'version="{self.version}"')
+        return f"TrackInfo({', '.join(partes)})"
+
+
+# ── Función pública ──────────────────────────────────────────────────────────
+
+def parsear_track(raw: str) -> TrackInfo:
+    """
+    Extrae título, artistas y versión de un string de canción/álbum.
+
+    Estrategia:
+        Aplica _PATRONES en orden; el primero que matchee produce el resultado.
+        Si ninguno matchea, el string completo se considera el título.
+
+    Args:
+        raw: String crudo, p.ej. "Song (feat. A1, A2) - Single".
+
+    Returns:
+        TrackInfo con los campos completados según lo que se detectó.
+
+    """
+    for patron in _PATRONES:
+        m = patron.match(raw.strip())
+        if not m:
+            continue
+        g = m.groupdict()
+        titulo   = g.get("titulo",   "").strip()
+        artistas = parsear_artistas(g["artistas"]) if g.get("artistas") else []
+        version  = g["version"].strip().title() if g.get("version") else None
+        return TrackInfo(titulo=titulo, artistas=artistas, version=version)
+
+    return TrackInfo(titulo=raw.strip())
 

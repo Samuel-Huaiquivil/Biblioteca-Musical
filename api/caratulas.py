@@ -12,7 +12,7 @@
 
 import io
 import requests
-from PIL import Image   # pip install Pillow
+from PIL import Image
 
 from api.musicbrainz import buscar_cancion_mbz, obtener_mejor_recording
 from utils.errores import ErrorAPI

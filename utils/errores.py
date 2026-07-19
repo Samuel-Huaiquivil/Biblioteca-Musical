@@ -1,35 +1,51 @@
-# utils/errores.py
-# Excepciones personalizadas del proyecto.
+
+# === Excepciones Base ===
+
+from typing import Dict, List
+
+from pydantic import ValidationError
+
+
+# === Excepciones Generales ===
 
 class ErrorBaseDatos(Exception):
-    """Error general al operar con la base de datos."""
+    "Error al operar con la Base de Datos."
     pass
 
-class ErrorNoEncontrado(ErrorBaseDatos):
-    """El registro buscado no existe en la base de datos."""
-    def __init__(self, entidad: str, valor: str):
-        super().__init__(f"{entidad} '{valor}' no encontrado en la base de datos.")
+
+
+# === Excepciones Puntuales ===
+class ErrorCodigos(ErrorBaseDatos):
+    '''
+    Error al busqueda de Códigos en la Base de Datos.
+    '''
+    def __init__(self, entidad: str, detalles: str):
         self.entidad = entidad
+        super().__init__(f"Error buscando los Códigos Externos de {entidad}. Detalles {detalles}")
+
+
+class ErrorBusquedaLocal(ErrorBaseDatos):
+    '''
+    Error al buscar un registro en la base de datos local.
+
+    Attributes:
+        tabla (str): Nombre de la tabla donde se realizó la búsqueda.
+        valor (str): Valor que se buscaba.
+        detalles (str): Detalles adicionales sobre el error.
+    '''
+    def __init__(self, tabla: str, valor: str, detalles: str):
+        self.tabla = tabla
         self.valor = valor
+        self.detalles = detalles
+        super().__init__(f"Error buscando {valor} en {tabla}. Detalles {detalles}")
 
-class ErrorInsercion(ErrorBaseDatos):
-    """Fallo al insertar un registro en la base de datos."""
-    def __init__(self, entidad: str, detalle: str):
-        super().__init__(f"Error al insertar {entidad}: {detalle}")
-        self.entidad = entidad
 
-class ErrorAPI(Exception):
-    """Error al comunicarse con una API externa."""
-    def __init__(self, servicio: str, detalle: str):
-        super().__init__(f"Error en la API de {servicio}: {detalle}")
-        self.servicio = servicio
-
-class ErrorValidacion(Exception):
-    """Los datos recibidos no cumplen el formato esperado."""
-    pass
-
-class ErrorArchivo(Exception):
-    """Error al leer o procesar un archivo de audio."""
-    def __init__(self, ruta: str, detalle: str):
-        super().__init__(f"Error procesando '{ruta}': {detalle}")
-        self.ruta = ruta
+class ErrorInsercionLocal(ErrorBaseDatos):
+    '''
+    Error al insertar un registro en la base de datos local.
+    '''
+    def __init__(self, tabla: str, datos: str, detalles: str):
+        self.tabla = tabla
+        self.datos = datos
+        self.detalles = detalles
+        super().__init__(f"Error insertando {datos} en {tabla}. Detalles {detalles}")

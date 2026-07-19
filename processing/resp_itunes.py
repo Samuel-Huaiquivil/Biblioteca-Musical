@@ -3,7 +3,7 @@
 
 from typing import Dict, Any
 
-from models.schemas import Contenedor
+from models.schemas import Contenedor, ContenedorMBZ, ArtistaMBZ, CancionMBZ, AlbumMBZ, GrupoAlbumMBZ
 from utils.dicc_a_clases import convertir_respuesta_arts, convertir_respuesta_album_single, convertir_respuesta_smp
 from utils.errores import ErrorValidacion
 from utils.poderador import validar_respuesta_itunes, propiedades_minimas
@@ -65,3 +65,29 @@ def resp_itunes(diccionario_itunes: Dict[str, Any], principal: bool = False, alb
     dicc = _revisar_diccionario(diccionario=diccionario_itunes)
     con = _convertir_a_contenedor(dicc, principal, alb_rev)
     return con
+
+
+def respuesta_mbz_a_contenedor(respuesta: RespuestaMBZ) -> ContenedorMBZ:
+    grupo = GrupoAlbumMBZ(
+        codigo_mbz=respuesta.grp_album_mbz,
+        nombre_grupo=respuesta.grp_album_titulo
+    )
+    album = AlbumMBZ(
+        codigo_mbz=respuesta.album_mbz,
+        titulo_album=respuesta.album_titulo,
+        estatus=respuesta.estatus,
+        fecha=respuesta.fecha,
+        pistas=respuesta.pistas
+    )
+    cancion = CancionMBZ(
+        codigo_mbz=respuesta.cancion_mbz,
+        nombre_cancion=respuesta.cancion_titulo
+    )
+    artistas = [ArtistaMBZ(codigo_mbz=a.codigo if a.codigo else "", nombre_artista=a.nombre) for a in respuesta.artistas]
+    
+    return ContenedorMBZ(
+        grupo=grupo,
+        album=album,
+        cancion=cancion,
+        artista=artistas
+    )

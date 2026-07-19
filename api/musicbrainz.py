@@ -12,7 +12,7 @@ import requests
 import dotenv
 from pydantic import ValidationError
 
-from models.schemas_mbz import RespuestaMbz, RecordingMbz
+from models.schemas_api import RespuestaMBZ, RecordingMbz
 from utils.errores import ErrorAPI
 
 _URL_BASE  = "https://musicbrainz.org/ws/2"
@@ -79,13 +79,13 @@ def buscar_cancion_mbz(titulo: str, artista: str, limite: int = 5) -> list[Recor
     data = _get("recording/", {"query": query, "limit": limite})
 
     try:
-        respuesta = RespuestaMbz(**data)
+        respuesta = RecordingMbz(**data)
     except ValidationError as e:
         raise ErrorAPI("MusicBrainz", f"Respuesta inesperada: {e}") from e
 
     # Ordenar por score descendente (MusicBrainz ya los envía ordenados,
     # pero lo hacemos explícito por claridad)
-    return sorted(respuesta.recordings, key=lambda r: r.score, reverse=True)
+    return sorted(respuesta, key=lambda r: r.score, reverse=True)
 
 
 # ---------------------------------------------------------------------------

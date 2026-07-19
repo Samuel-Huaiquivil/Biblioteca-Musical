@@ -1,0 +1,12 @@
+- tomar y leer las distintas canciones.
+- busqueda local -> Contenedor
+- busqueda en la web
+- registro de las respuestas
+- Selección del mejor -> Contenedor
+- Insertar datos
+
+# Tipos de formato:
+- Itunes -> Respuesta Itunes
+- MBZ    -> Respuesta MBZ
+- Local  -> Clase Definida: Contenedor/Paquete
+- ID3    -> Datos Musica

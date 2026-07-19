@@ -16,7 +16,7 @@ from utils.caratulas import escribir_caratula, gestion_caratulas
 from utils.dicc_a_clases import convertir_a_caratula
 from utils.gestion_archivos import listar_elementos_ruta, obtener_datos_cancion, mover_y_renombrar_cancion
 from database.repository import busqueda_avanzada, guardar_cancion_pipeline
-from utils.errores import ErrorAPI, ErrorArchivo, ErrorBaseDatos, ErrorInsercion, ErrorValidacion
+from utils.errores import ErrorAPI, ErrorArchivo, ErrorBaseDatos, ErrorInsercionLocal, ErrorValidacion
 from utils.error_analyzer import ErrorAnalyzer
 from utils.pipeline_logging import PipelineLogger
 from utils.poderador import obtener_mejor_diccionario, validar_respuesta_itunes
@@ -36,7 +36,7 @@ def procesar_canciones(
         descargar_caratulas: bool = False,
         mover_canciones: bool = False
     ):
-    "Pipeline mejorado para procesar las canciones de la biblioteca"
+    "[Deprecated] Pipeline para procesar las canciones de la biblioteca"
     rutas = preparar_entorno(ruta_principal=ruta_principal)
     log = rutas["log"]
     ruta_db = rutas["base_datos"]
@@ -88,6 +88,7 @@ def procesar_canciones(
                 excepcion=e
             )
             total_errores += 1
+
         contenedor = None
         caratula = None 
         
@@ -124,20 +125,7 @@ def procesar_canciones(
                         contenedor = resp_itunes(mejor_itunes, True, nivel_busqueda >=2 )
                         
                         # VALIDACIÓN PREVENTIVA: Verificar antes de guardar
-                        es_valido, error_validacion = validador.validar_clases_completas(clases)
-                        if not es_valido:
-                            logger.error(
-                                f"Validación fallida (mejor_itunes): {error_validacion}",
-                                archivo=nombre_archivo
-                            )
-                            error_analyzer.registrar_error_validacion(
-                                diccionario=mejor_itunes,
-                                detalle=error_validacion or "",
-                                nombre_archivo=nombre_archivo
-                            )
-                            total_errores += 1
-                            continue
-                        
+
                         guardado = guardar_cancion_pipeline(contenedor, ruta_db)
                         if not guardado:
                             # FIX: Era 'resultado' (undefined), ahora 'mejor_itunes'
@@ -195,7 +183,7 @@ def procesar_canciones(
                                 detalle="Falló guardar como respaldo",
                                 nombre_archivo=nombre_archivo
                             )
-                    except ErrorInsercion as e:
+                    except ErrorInsercionLocal as e:
                         logger.debug(
                             f"Error inserción respaldo iTunes: {e}",
                             archivo=nombre_archivo
@@ -214,7 +202,7 @@ def procesar_canciones(
                 )
                 total_errores += 1
         
-        if not clases:
+        if not contenedor:
             # Búsqueda en MusicBrainz
             logger.cancion_consultada_mbz(nombre_archivo)
             try:

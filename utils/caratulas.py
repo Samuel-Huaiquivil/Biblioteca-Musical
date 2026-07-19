@@ -11,7 +11,7 @@ from mutagen.id3._frames import APIC
 from mutagen.id3._util import ID3NoHeaderError
 
 from models.schemas import Caratula, DatosCaratula, SalidaCaratula
-from utils.errores import ErrorArchivo, ErrorBaseDatos, ErrorInsercion
+from utils.errores import ErrorArchivo, ErrorBaseDatos, ErrorInsercionLocal
 from config.setup import _ruta_caratulas
 from database.caratulas import pipeline_caratula
 if _ruta_caratulas:
@@ -192,6 +192,6 @@ def gestion_caratulas(
         if ruta:
             return _ruta_a_datos_caratula(ruta_imagen=ruta)
         else:
-            raise ErrorInsercion("Caratula", "Error gestión archivo")
+            raise ErrorInsercionLocal("Caratula", "Error gestión archivo")
     except Exception as e:
-        raise ErrorInsercion ("Caratula", "Error al gestionar carátulas") from e
+        raise ErrorInsercionLocal ("Caratula", f"Error al gestionar carátulas. {e}") from e

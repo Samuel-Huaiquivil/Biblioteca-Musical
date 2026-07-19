@@ -1,17 +1,11 @@
-# utils/dicc_a_clases.py
-# Convierte un objeto RespuestaItunes (ya validado) a modelos del dominio.
-# Recibe RespuestaItunes, no diccionarios crudos.
+
 
 from datetime import date
 from typing import List
 
-from models.schemas import Album, Cancion, Caratula, DatosCaratula, GrupoArtistas, Genero, RespuestaItunes
+from models.schemas import Album, Cancion, Caratula, DatosCaratula, GrupoArtistas, Genero
+from models.schemas_api import RespuestaItunes
 from utils.parsear_artistas import parsear_artistas
-
-
-def _explicito(valor: str) -> bool:
-    """Convierte el string de iTunes a booleano."""
-    return valor.lower() != "notexplicit"
 
 
 def convertir_a_genero(resp: RespuestaItunes) -> Genero:
@@ -34,8 +28,7 @@ def convertir_a_album_mult(resp: RespuestaItunes, single: bool = False) -> Album
         titulo=titulo_limpio,
         lanzamiento=fecha,
         codigo_itunes=resp.collectionId,
-        pistas_totales=resp.trackCount,
-        explicito=_explicito(resp.collectionExplicitness),
+        pistas_totales=resp.trackCount
     )
 
 
@@ -50,8 +43,7 @@ def convertir_a_album_solo(resp: RespuestaItunes) -> Album:
         titulo=resp.collectionName,
         lanzamiento=fecha,
         codigo_itunes=resp.collectionId,
-        pistas_totales=resp.trackCount,
-        explicito=_explicito(resp.collectionExplicitness),
+        pistas_totales=resp.trackCount
     )
 
 
@@ -61,14 +53,12 @@ def convertir_a_cancion(resp: RespuestaItunes, single: bool = False) -> Cancion:
         return Cancion(
             titulo=titulo,
             num_pista=resp.trackNumber,
-            explicito=_explicito(resp.trackExplicitness),
             codigo_itunes=resp.trackId,
         )
     else:
         return Cancion(
             titulo=resp.trackName,
             num_pista=resp.trackNumber,
-            explicito=_explicito(resp.trackExplicitness),
             codigo_itunes=resp.trackId,
         )
 
@@ -184,3 +174,27 @@ def convertir_respuesta_album_single(resp: RespuestaItunes) -> dict:
         "album": convertir_a_album_mult(resp, True),
         "cancion": convertir_a_cancion(resp, True),
     }
+
+
+
+
+def _convertir_a_contenedor(diccionario: Dict[str, Any], estado_cancion: bool = False, album_revisado: bool = False) -> Contenedor:
+    clase_gen = diccionario["genero"]
+    clase_art = diccionario["artistas"]
+    clase_alb = diccionario["album"]
+    clase_can = diccionario["cancion"]
+    return Contenedor(
+        genero=clase_gen,
+        artistas=clase_art,
+        album=clase_alb,
+        cancion=clase_can,
+        album_revisado=album_revisado,
+        cancion_estado=estado_cancion
+    )
+
+
+def resp_itunes(diccionario_itunes: Dict[str, Any], principal: bool = False, alb_rev: bool = False):
+    dicc = _revisar_diccionario(diccionario=diccionario_itunes)
+    con = _convertir_a_contenedor(dicc, principal, alb_rev)
+    return con
+

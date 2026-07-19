@@ -3,7 +3,7 @@
 from difflib import SequenceMatcher
 from collections import Counter
 from typing import List
-from models.schemas import RespuestaItunes
+from models.schemas_api import RespuestaItunes
 
 # ---------------------------------------------------------------------------
 # Pesos para evaluar qué tan completo es un resultado
