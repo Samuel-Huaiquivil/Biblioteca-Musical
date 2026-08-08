@@ -4,6 +4,7 @@ from typing import List
 
 from config.settings import get_connection
 from models.schemas_v5 import Ident, Codigo
+from utils.errores import ErrorCodigos
 
 # ==========================
 # Gestión identificadores
@@ -37,11 +38,11 @@ def _obtener_todos_identificadores(db: Path | None = None) -> List[Ident]:
         raise ValueError(f"Error: {identifier}")
 
 def _insertar_identificador(ident: Ident, db: Path | None = None) -> int:
-    "Inserta una región con con la API iTunes"
+    "Inserta un Identificador en la tabla APIs"
     try:
         with get_connection(db) as conn:
             res = conn.execute(
-                """INSERT OR IGNORE INTO Apis 
+                """INSERT INTO Apis 
                 (nombre_api, region_api) 
                 VALUES (?, ?)""", (ident.api, ident.region)
             )
@@ -54,7 +55,7 @@ def _insertar_identificador(ident: Ident, db: Path | None = None) -> int:
         raise ValueError(f"Error al insertar Identificador '{ident.api}-{ident.region}'. Detalles: {identifier}")
 
 def obt_ins_identificador(ident: Ident, db: Path | None = None) -> int:
-    "Obtiene el ID del identificador"
+    "Obtiene el ID del identificador, si no existe lo inserta."
     lista_ident = _obtener_todos_identificadores(db)
     for identif in lista_ident:
         if (identif.api == ident.api 
@@ -64,8 +65,12 @@ def obt_ins_identificador(ident: Ident, db: Path | None = None) -> int:
     return _insertar_identificador(ident, db)
 
 
-def insertar_codigo(codigo: Codigo, tipo: str, db: Path | None = None) -> int:
-    "Inserta un nuevo Codigo Referencial, requiere una clase y el tipo correspondiente"
+def _insertar_registro_codigo(codigo: Codigo, tipo: str, db: Path | None = None) -> int:
+    """
+    Inserta un nuevo Codigo Referencial, requiere una clase y el tipo correspondiente
+    
+    Retorna 0, si no se inserta. 1, si se insertó. 2 si ya estaba.
+    """
     if tipo not in tipos_validos.keys():
         raise ValueError(f"Tipo '{tipo}' NO Válido. Opciones: {tipos_validos.keys()}")
     tabla = tipos_validos.get(tipo)
@@ -76,11 +81,14 @@ def insertar_codigo(codigo: Codigo, tipo: str, db: Path | None = None) -> int:
                 (codigo.api_id, codigo.tabla_id, codigo.codigo_ext)
             )
             conn.commit()
-        return 1
+            if cursor.lastrowid:
+                return 1
+            else:
+                raise ErrorCodigos(f"Error al insertar el Código", f"{tipo} - Cod:{codigo.codigo_ext}")
     except sqlite3.IntegrityError:
         return 2
     except Exception as identifier:
-        raise ValueError(f"Error: {identifier}") from identifier
+        raise ErrorCodigos(f"{tipo} ID: {codigo.tabla_id}", f"{identifier}") from identifier
 
 def obtener_codigos(codigo: Codigo, tipo: str, db: Path | None = None) -> List[str]:
     "Obtiene todos los códigos de la entidad"
@@ -100,3 +108,35 @@ def obtener_codigos(codigo: Codigo, tipo: str, db: Path | None = None) -> List[s
             return lista_codigos
     except Exception as e:
         raise ValueError(f"Error: {e}") from e
+
+def insertar_codigo(
+        id_entidad: int, ident: int, tipo: str,
+        codigo: str, db: Path | None = None
+    ) -> int:
+    '''
+    Inserta el código de la entidad en la base de datos
+
+    Args:
+        id_entidad (int): ID del registro con el código.
+        ident (int): ID de la API a vincular.
+        tipo (str): Tipo de registro (Cancion, Album, Artista).
+        codigo (str): El Código que se va insertar.
+        db (Path|None): La ruta a la Base de Datos. None para una ruta predefinida.
+    
+    Returns:
+        int: Si se inserta, 1. Si ya estaba, 2
+    '''
+    try:
+        cod_aux = Codigo(
+            tabla_id=id_entidad,
+            api_id=ident,
+            codigo_ext=codigo
+        )
+        num = _insertar_registro_codigo(
+            codigo=cod_aux,
+            tipo=tipo,
+            db=db
+        )
+        return num
+    except Exception as identifier:
+        raise ErrorCodigos(tipo, f"{str(identifier)}")

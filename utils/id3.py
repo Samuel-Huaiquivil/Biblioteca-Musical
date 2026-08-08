@@ -1,12 +1,13 @@
-# processing/id3.py
-# Escribe los tags ID3 en archivos .mp3 usando los datos del dominio.
+# utils/id3.py
+import mimetypes
+
 from pathlib import Path
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
 from mutagen.id3._util import ID3NoHeaderError
-from mutagen.id3._frames import TIT1, TIT2, TIT3, TPE1, TPE2, TALB, TDRC, TRCK, TCON, TPOS, APIC
+from mutagen.id3._frames import (TIT2, TIT3, TPE1, TPE2, TALB, TDRC, TRCK, TCON, TPOS, APIC)
 
-from models.schemas import Contenedor, DatosMusica, DatosCaratula, SalidaCaratula
+from models.schemas_v5 import DatosMusica
 from utils.errores import ErrorArchivo
 
 
@@ -25,6 +26,8 @@ def _cargar_id3(ruta: Path) -> ID3:
         audio.add_tags(ID3=ID3)
         assert isinstance(audio.tags, ID3) 
         return audio.tags
+    except Exception as e:
+        raise ErrorArchivo(f"Error al procesar archivo: '{ruta.name}'.", str(e)) from e
 
 
 def _formatear_artistas(principal: str, colaboradores: list[str]) -> str:
@@ -35,6 +38,22 @@ def _formatear_artistas(principal: str, colaboradores: list[str]) -> str:
     """
     todos = [principal] + [a for a in colaboradores if a]
     return "/".join(todos)
+
+
+def _limpiar_tags(ruta: Path) -> None:
+    """
+    Elimina todos los tags ID3 del archivo.
+    Útil antes de una reescritura completa o para limpiar archivos corruptos.
+    """
+    if not ruta.exists():
+        raise ErrorArchivo(str(ruta), "El archivo no existe.")
+    try:
+        tags = ID3(ruta)
+        tags.delete()
+    except ID3NoHeaderError:
+        pass  # Si no tiene tags, no hay nada que limpiar
+    except Exception as e:
+        raise ErrorArchivo(f"Error al limpiar tags del archivo: '{ruta.name}'.",f" Detalles: {str(e)}.") from e
 
 
 # ---------------------------------------------------------------------------
@@ -58,12 +77,12 @@ def escribir_tags(ruta: Path, datos: DatosMusica) -> None:
     - TCON: género musical
     """
     if not ruta.exists():
-        raise ErrorArchivo(str(ruta), "El archivo no existe.")
+        raise ErrorArchivo(f"El archivo '{ruta.name}' no existe.")
     if ruta.suffix.lower() != ".mp3":
-        raise ErrorArchivo(str(ruta), "El archivo no es un .mp3.")
+        raise ErrorArchivo(f"El archivo '{ruta.name}' no es un .mp3.")
 
     try:
-        limpiar_tags(ruta)
+        _limpiar_tags(ruta)
         tags = _cargar_id3(ruta)
 
         # Obligatorios
@@ -81,57 +100,41 @@ def escribir_tags(ruta: Path, datos: DatosMusica) -> None:
         if datos.subtitulo:
             tags[TIT3.__name__] = TIT3(encoding=3, text=datos.subtitulo)
 
-        tags.save(ruta, v2_version=3)  # ID3v2.3 — máxima compatibilidad
+        tags.save(ruta, v2_version=3)
 
     except Exception as e:
-        raise ErrorArchivo(str(ruta), f"Error al escribir tags: {e}") from e
+        raise ErrorArchivo(f"Error al escribir tags: '{ruta.name}'.", f" Detalles: {e}.") from e
 
 
-def limpiar_tags(ruta: Path) -> None:
-    """
-    Elimina todos los tags ID3 del archivo.
-    Útil antes de una reescritura completa o para limpiar archivos corruptos.
-    """
-    if not ruta.exists():
-        raise ErrorArchivo(str(ruta), "El archivo no existe.")
+def incrustar_portada(ruta_mp3: Path, ruta_img: Path):
+    """Incrusta la imagen dentro del archivo MP3 como portada frontal."""
+    if not ruta_mp3.exists():
+        raise ErrorArchivo(f"El archivo '{ruta_mp3.name}' no existe.")
+    if ruta_mp3.suffix.lower() != ".mp3":
+        raise ErrorArchivo(f"El archivo '{ruta_mp3.name}' no es un .mp3.")
+    if not ruta_img.exists():
+        raise ErrorArchivo(f"El archivo '{ruta_img.name}' no existe.")
+
     try:
-        tags = ID3(ruta)
-        tags.delete()
-    except ID3NoHeaderError:
-        pass  # Si no tiene tags, no hay nada que limpiar
+        audio = _cargar_id3(ruta=ruta_mp3)
+
+        audio.delall("APIC")
+
+        mime_type, _ = mimetypes.guess_type(ruta_img)
+        if mime_type is None:
+            mime_type = "image/jpeg"
+
+        with open(ruta_img, 'rb') as img:
+            audio.add(APIC(
+                encoding=3,              # UTF-8
+                mime=mime_type,          # tipo detectado
+                type=3,                  # portada frontal
+                desc="Front Cover",
+                data=img.read()
+            ))
+        audio.save()
+
+        return None
+
     except Exception as e:
-        raise ErrorArchivo(str(ruta), f"Error al limpiar tags: {e}") from e
-
-
-# ---------------------------------------------------------------------------
-# Conversión desde modelos del dominio
-# ---------------------------------------------------------------------------
-
-def contenedor_a_datos_musica(contenedor: Contenedor) -> DatosMusica:
-    """
-    Convierte el diccionario de clases del dominio al modelo DatosMusica
-    listo para escribir con escribir_tags().
-
-    Entrada esperada:
-    {
-        'genero':   Genero,
-        'artistas': GrupoArtistas,
-        'album':    Album,
-        'cancion':  Cancion,
-    }
-    """
-    genero = contenedor.genero
-    artistas = contenedor.artistas
-    album = contenedor.album
-    cancion = contenedor.cancion
-
-    return DatosMusica(
-        titulo=cancion.titulo,
-        album=album.titulo,
-        artista_principal=artistas.principal,
-        artistas_colab=(artistas.colaboradores or []) + (artistas.feat or []),
-        anio=album.lanzamiento.year,
-        num_pista=cancion.num_pista,
-        genero=genero.nombre,
-    )
-
+        raise ErrorArchivo(f"Problemas al insertar tags.", f"Archivo: {ruta_mp3.name}. Detalles: {e}") from e

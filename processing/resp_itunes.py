@@ -1,93 +1,84 @@
-# Funciones para revisar cada diccionario
-# processing/resp_itunes.py
+from typing import List, Any
+from pathlib import Path
 
-from typing import Dict, Any
+from pydantic import ValidationError
 
-from models.schemas import Contenedor, ContenedorMBZ, ArtistaMBZ, CancionMBZ, AlbumMBZ, GrupoAlbumMBZ
-from utils.dicc_a_clases import convertir_respuesta_arts, convertir_respuesta_album_single, convertir_respuesta_smp
-from utils.errores import ErrorValidacion
-from utils.poderador import validar_respuesta_itunes, propiedades_minimas
+from database.repository_v5 import pipeline_insertar_paquete
+from database.ident import obt_ins_identificador
+from models.schemas_adapter import AdaptadorItunes
+from models.schemas_itunes_v5 import RespuestaItunes
+from utils.errores import ErrorBaseDatos
+from utils.logging_class import PipelineLog
 
-def _revisar_diccionario(diccionario: Dict[str, Any]) -> Dict[str, Any]:
-    '''
-    Realiza todos los pasos para gestionar los diccionario tipo 'canción'. Retorna un diccionario con las clases Pydantic.
-    Gestiona si un diccionario tiene un artista en solitario, multiples artistas o si es un Album tipo 'Single'
-    '''
-    # Propiedades Mínimas
-    if not propiedades_minimas(dicc=diccionario):
-        raise ErrorValidacion(f"El Diccionario no cumple con las cantidades Mínimas")
-    
-    # Determinar si son unos o varios artistas.
-    artista_solitario: bool = True
-    # Determinar si la canción es de un album "Single"
-    album_single: bool = False
+logger = PipelineLog(__name__)
 
-    if diccionario.get("collectionArtistName", None) or diccionario.get("collectionArtistId", None):
-        artista_solitario = False
-    if "single" in diccionario.get("collectionName", "").lower() and diccionario.get("trackCount", 1) <= 3:
-        album_single = True
-    
-    # Verificar con Pydantic y conversión a clase RespuestaItunes
-    respuesta_itunes = validar_respuesta_itunes(diccionario)
+def procesar_respuestas_itunes(lista_respuesta: List[Any], base_datos: Path | None = None):
+    "Procesa una lista de elementos en itunes"
+    logger.proceso("Respuesta Itunes")
+    logger.info(f"Procesando {len(lista_respuesta)} elemento(s).")
+    errores = 0
+    cont = 0
+    for respuesta in lista_respuesta:
+        try:
+            #Validación externa:
+            clase_externa = RespuestaItunes.model_validate(respuesta)
 
-    # -------------------------------------
-    # Convertir a clases Cancion y Artista
-    # -------------------------------------
+            adaptador = AdaptadorItunes()
 
-    # Si es un album single, gestión diferente
-    if album_single:
-        return convertir_respuesta_album_single(respuesta_itunes)
-    
-    # Si son varios artistas, gestión diferente.
-    if not artista_solitario:
-        return convertir_respuesta_arts(respuesta_itunes)
-    
-    # Gestión simple
-    return convertir_respuesta_smp(respuesta_itunes)
+            paquete = None
 
+            # Transformación
+            if clase_externa.es_album_single():
+                #Convertidor Singles
+                logger.debug("Transformación Álbum Single")
+                paquete = adaptador.convertir_album_single(clase_externa)
 
-def _convertir_a_contenedor(diccionario: Dict[str, Any], estado_cancion: bool = False, album_revisado: bool = False) -> Contenedor:
-    clase_gen = diccionario["genero"]
-    clase_art = diccionario["artistas"]
-    clase_alb = diccionario["album"]
-    clase_can = diccionario["cancion"]
-    return Contenedor(
-        genero=clase_gen,
-        artistas=clase_art,
-        album=clase_alb,
-        cancion=clase_can,
-        album_revisado=album_revisado,
-        cancion_estado=estado_cancion
-    )
+            elif clase_externa.tiene_multiples_artistas():
+                # Parsear Artistas
+                logger.debug("Transformación Canción Multiples Artistas.")
+                paquete = adaptador.convertir_mult_artistas(clase_externa)
 
+            else:
+                # Conversión Regular
+                logger.debug("Transformación Canción Regular")
+                paquete = adaptador.convertir_art_simple(clase_externa)
 
-def resp_itunes(diccionario_itunes: Dict[str, Any], principal: bool = False, alb_rev: bool = False):
-    dicc = _revisar_diccionario(diccionario=diccionario_itunes)
-    con = _convertir_a_contenedor(dicc, principal, alb_rev)
-    return con
+            if paquete:
+                cont += 1
+                # Insertar en la base de Datos
+                ident = clase_externa.ident()
+                ident_id = obt_ins_identificador(ident, base_datos)
+                logger.debug(f"Insertando Paquete N° {cont}")
+                pipeline_insertar_paquete(
+                    paquete_datos=paquete,
+                    codigo_ident=ident_id,
+                    ruta_base_datos=base_datos
+                    )
+            else:
+                # Posible error de transformación
+                raise ValueError("Error con la transformación")
 
+        except ValidationError as ve:
+            logger.warning(
+                "Error al validar elemento",
+                extra={
+                    "elemento_id": respuesta.get("trackId", "SN"),
+                    "errores_validacion": ve.errors(),
+                }
+            )
+            errores += 1
+            continue
+        except ErrorBaseDatos as db:
+            logger.error(
+                "Error con la Base de Datos"
+            )
+        except Exception as e:
+            logger.error(str(e))
+            errores += 1
+            continue
 
-def respuesta_mbz_a_contenedor(respuesta: RespuestaMBZ) -> ContenedorMBZ:
-    grupo = GrupoAlbumMBZ(
-        codigo_mbz=respuesta.grp_album_mbz,
-        nombre_grupo=respuesta.grp_album_titulo
-    )
-    album = AlbumMBZ(
-        codigo_mbz=respuesta.album_mbz,
-        titulo_album=respuesta.album_titulo,
-        estatus=respuesta.estatus,
-        fecha=respuesta.fecha,
-        pistas=respuesta.pistas
-    )
-    cancion = CancionMBZ(
-        codigo_mbz=respuesta.cancion_mbz,
-        nombre_cancion=respuesta.cancion_titulo
-    )
-    artistas = [ArtistaMBZ(codigo_mbz=a.codigo if a.codigo else "", nombre_artista=a.nombre) for a in respuesta.artistas]
-    
-    return ContenedorMBZ(
-        grupo=grupo,
-        album=album,
-        cancion=cancion,
-        artista=artistas
-    )
+    msg_final = f"Proceso terminado. Elementos Procesados: [{cont}]"
+    if errores:
+        msg_final += f". N° Errores: [{errores}]"
+    msg_final += "."
+    logger.info(msg_final)

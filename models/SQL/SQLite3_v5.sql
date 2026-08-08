@@ -20,11 +20,9 @@ CREATE TABLE IF NOT EXISTS Albumes (
     pistas_totales      INTEGER,
     fecha_lanzamiento   DATE,       -- Adaptador/Convertidor en settings.py
     revisado            BOOLEAN,    -- Adaptador/Convertidor en settings.py
-    genero_principal_id INTEGER,
     artista_principal_id INTEGER,
     creado_en           TEXT    DEFAULT (date('now')),  -- auditoría
-    CONSTRAINT fk_artista_album FOREIGN KEY (artista_principal_id) REFERENCES Artistas(id_artista) ON DELETE CASCADE,
-    CONSTRAINT fk_genero_album  FOREIGN KEY (genero_principal_id)  REFERENCES Generos(id_genero) ON DELETE SET NULL
+    CONSTRAINT fk_artista_album FOREIGN KEY (artista_principal_id) REFERENCES Artistas(id_artista) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Canciones (
@@ -82,10 +80,18 @@ CREATE TABLE IF NOT EXISTS Canciones_Albumes (
 -- CARATULAS
 CREATE TABLE IF NOT EXISTS Caratulas (
     id_caratula     INTEGER PRIMARY KEY AUTOINCREMENT,
-    url_caratula    TEXT,
-    imagen_bytes    BLOB,
+    url_descarga    TEXT,
+    fecha_descarga  DATE,       -- Adaptador/Convertidor en settings.py
+    revisado        BOOLEAN,    -- Adaptador/Convertidor en settings.py
     album_id        INTEGER UNIQUE,
     CONSTRAINT fk_caratula_album FOREIGN KEY (album_id) REFERENCES Albumes(id_album) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Imagenes (
+    caratula_id     INTEGER,
+    imagen_bytes    BLOB,
+    PRIMARY KEY (caratula_id),
+    CONSTRAINT fk_imagen_caratula FOREIGN KEY (caratula_id) REFERENCES Caratulas(id_caratula) ON DELETE CASCADE
 );
 
 -- IDENTIFICADORES
@@ -129,3 +135,8 @@ CREATE INDEX IF NOT EXISTS idx_albumes_artista ON Albumes(artista_principal_id);
 CREATE INDEX IF NOT EXISTS idx_canciones_album ON Canciones_Albumes(id_album);
 CREATE INDEX IF NOT EXISTS idx_artistas_canciones_reverse ON Artistas_Canciones(id_artista);
 CREATE INDEX IF NOT EXISTS idx_generos_canciones_reverse ON Generos_Canciones(id_genero);
+CREATE INDEX IF NOT EXISTS idx_caratulas_album ON Caratulas(album_id);
+CREATE INDEX IF NOT EXISTS idx_imagenes_caratula ON Imagenes(caratula_id);
+CREATE INDEX IF NOT EXISTS idx_artistas_identificadores_reverse ON Artistas_Identificadores(artista_id);
+CREATE INDEX IF NOT EXISTS idx_canciones_identificadores_reverse ON Canciones_Identificadores(cancion_id);
+CREATE INDEX IF NOT EXISTS idx_albumes_identificadores_reverse ON Albumes_Identificadores(album_id);
