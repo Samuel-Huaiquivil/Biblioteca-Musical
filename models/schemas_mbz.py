@@ -127,23 +127,18 @@ class MediaMBZ(BaseModel):
         """Selecciona el track principal de la media para construir la canción."""
         if not self.track:
             return TrackMBZ()
-
-        if len(self.track) > 1:
-            tracks: List[TrackMBZ] = []
-            for t in self.track:
-                track = self._formatear_track(t)
-                tracks.append(track)
-            return tracks[0]
-        else:
-            return self._formatear_track(self.track[0])
+        return self._formatear_track(self.track[0])
 
     def to_cancion(self, val: int = 1) -> Cancion:
         """Convierte una media de MusicBrainz en una canción con número de pista calculado."""
         t = self._obtener_track()
         if not val:
             val = 1
-
+        
         numero = t.obtener_numero()
+        if self.track_offset:
+            numero = self.track_offset + 1
+
         if self.position:
             pista = (val * (self.position - 1)) + numero
         else:
@@ -211,9 +206,9 @@ class ReleaseMBZ(BaseModel):
                 res.append(m.to_cancion(val))
             return res
         else:
-            return [self.media[0].to_cancion()]
+            return [self.media[0].to_cancion(val)]
 
-    def to_album(self, format: bool = True) -> Album:
+    def to_album(self, fmt_cod: bool = False) -> Album:
         """Convierte el release a un álbum del modelo local."""
         tit = self.title
         if self.disambiguation:
@@ -228,7 +223,7 @@ class ReleaseMBZ(BaseModel):
             titulo=txt,
             lanzamiento=_parsear_fecha(self.date),
             pistas_totales=self.track_count or 1,
-            codigo=cod if format else self.id
+            codigo=cod if fmt_cod else self.id
         )
 
     def to_album_grupo(self) -> Album | None:
@@ -237,8 +232,12 @@ class ReleaseMBZ(BaseModel):
             return None
         else:
             grp = self.release_group
+            if grp.primary_type and grp.primary_type.lower() != "album":
+                tit = grp.title + f"({grp.primary_type})"
+            else:
+                tit = grp.title
             return Album(
-                titulo=grp.title,
+                titulo=tit,
                 lanzamiento=_parsear_fecha(self.date),
                 pistas_totales=self.track_count,
                 codigo=grp.id
@@ -296,7 +295,7 @@ class RespuestaMbz(BaseModel):
         """Convierte la respuesta a una canción básica con identificador local."""
         tit = self.title
         if self.disambiguation:
-            tit += self.disambiguation
+            tit = tit +  f" ({self.disambiguation})"
         return Cancion(
             titulo=tit,
             num_pista=0,
@@ -321,20 +320,20 @@ class RespuestaMbz(BaseModel):
             canciones.extend(c)
         return canciones
 
-    def to_album_global(self) -> List[Album]:
+    def to_album_global(self, fmt: bool = False) -> List[Album]:
         """Consolida todos los álbumes de los releases en una lista única."""
         albumes: List[Album] = []
         for r in self.releases:
-            alb = r.to_album()
+            alb = r.to_album(fmt)
             albumes.append(alb)
         return albumes
 
-    def to_paquete_album(self) -> List[PaqueteDatos]:
+    def to_paquete_album(self, fmt_alb: bool = False) -> List[PaqueteDatos]:
         """Construye paquetes completos de álbum, canciones y artistas para inserción local."""
         paq: List[PaqueteDatos] = []
         for r in self.releases:
             # Album asociado
-            alb = r.to_album()
+            alb = r.to_album(fmt_alb)
             can = r.to_cancion_media()
             art = r.to_artistas_album()
             for c in can:
@@ -352,7 +351,7 @@ class RespuestaMbz(BaseModel):
         """Devuelve una lista de pares álbum-artista para procesamiento adicional."""
         respta: List[Tuple[Album, Artista]] = []
         for rel in self.releases:
-            alb = rel.to_album(format=False)
+            alb = rel.to_album(fmt_cod=False)
             art = rel.to_artistas_album()
             respta.append(
                 (alb, art.principal)

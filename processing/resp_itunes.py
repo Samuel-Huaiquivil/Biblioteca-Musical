@@ -27,20 +27,26 @@ def procesar_respuestas_itunes(lista_respuesta: List[Any], base_datos: Path | No
 
             paquete = None
 
+            info_extra = ""
             # Transformación
-            if clase_externa.es_album_single():
+            if clase_externa.es_single():
                 #Convertidor Singles
-                logger.debug("Transformación Álbum Single")
+                info_extra = "Transformación Álbum Single"
                 paquete = adaptador.convertir_album_single(clase_externa)
+
+            elif clase_externa.es_extended():
+                #Convertir Respectivamente
+                info_extra = "Tranformación Album Extended"
+                paquete = adaptador.convertir_album_extend(clase_externa)
 
             elif clase_externa.tiene_multiples_artistas():
                 # Parsear Artistas
-                logger.debug("Transformación Canción Multiples Artistas.")
+                info_extra = "Transformación Canción Multiples Artistas."
                 paquete = adaptador.convertir_mult_artistas(clase_externa)
 
             else:
                 # Conversión Regular
-                logger.debug("Transformación Canción Regular")
+                info_extra = "Transformación Canción Regular"
                 paquete = adaptador.convertir_art_simple(clase_externa)
 
             if paquete:
@@ -48,7 +54,7 @@ def procesar_respuestas_itunes(lista_respuesta: List[Any], base_datos: Path | No
                 # Insertar en la base de Datos
                 ident = clase_externa.ident()
                 ident_id = obt_ins_identificador(ident, base_datos)
-                logger.debug(f"Insertando Paquete N° {cont}")
+                logger.debug(f"Insertando Paquete N° {cont} | {info_extra}")
                 pipeline_insertar_paquete(
                     paquete_datos=paquete,
                     codigo_ident=ident_id,
@@ -70,10 +76,18 @@ def procesar_respuestas_itunes(lista_respuesta: List[Any], base_datos: Path | No
             continue
         except ErrorBaseDatos as db:
             logger.error(
-                "Error con la Base de Datos"
+                "Error con la Base de Datos",
+                extra={
+                    "Detalles": str(db)
+                }
             )
         except Exception as e:
-            logger.error(str(e))
+            logger.error(
+                "Error no Registrado.",
+                extra={
+                    "Detalles": str(e)
+                }
+            )
             errores += 1
             continue
 

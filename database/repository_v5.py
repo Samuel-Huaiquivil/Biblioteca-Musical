@@ -3,9 +3,12 @@ import sqlite3
 from pathlib import Path
 from typing import List, Tuple
 
-from models.schemas_v5 import Album, Cancion, SalidaArtista, Artista, PaqueteDatos
 from utils.errores import ErrorVincularDatos
 from utils.logging_class import PipelineLog
+from models.schemas_v5 import (
+    Album, Cancion, SalidaArtista, 
+    Artista, PaqueteDatos
+)
 
 from database.ident import insertar_codigo
 from database.busqueda import (
@@ -63,7 +66,7 @@ def _obtener_o_insertar_artista(
     )
     # Si es que existe.
     if resultado_artista:
-        logger.debug(f"Art: {resultado_artista.nombre}. ID: {resultado_artista.id_local}.")
+        #logger.debug(f"Art: {resultado_artista.nombre}. ID: {resultado_artista.id_local}.")
         # Revisión de códigos
         if clase_artista.codigo:
             # Si no está, se inserta. Si está, pass
@@ -75,10 +78,6 @@ def _obtener_o_insertar_artista(
                     codigo=clase_artista.codigo,
                     db=db
                 )
-                if val == 1:
-                    logger.debug("Codigo Insertado.")
-            else:
-                pass
     
     # Si no existe, Inserción de la Clase
     else:
@@ -92,7 +91,7 @@ def _obtener_o_insertar_artista(
                 codigo=clase_artista.codigo,
                 db=db
             )
-            logger.debug("Codigo Insertado.")
+            #logger.debug("Codigo Insertado.")
         resultado_artista = SalidaArtista(
             id_local=id_local,
             nombre=clase_artista.nombre
@@ -142,7 +141,7 @@ def _gestionar_canciones(
                 if lista.sort() == lista_colabs.sort():
                     id_cancion = can.id_local
                     vinculado = True
-                    logger.debug(f"Can: {clase_cancion.titulo}. ID: {id_cancion}.")
+                    #logger.debug(f"Can: {clase_cancion.titulo}. ID: {id_cancion}.")
                     break
 
     # Si no tiene canciones o no está registrada
@@ -163,8 +162,7 @@ def _gestionar_canciones(
             codigo=clase_cancion.codigo,
             db=db
         )
-        if val == 1:
-            logger.debug("Codigo Insertado.")
+        #logger.debug("Codigo Insertado.")
     return (id_cancion, vinculado)
 
 def _gestionar_albumes(
@@ -198,7 +196,7 @@ def _gestionar_albumes(
         for alb in lista_alb:
             if alb.coincide_con(clase_album):
                 id_album = alb.id_local
-                logger.debug(f"Alb: {alb.titulo}. ID: {id_album}.")
+                #logger.debug(f"Alb: {alb.titulo}. ID: {id_album}.")
                 break
     if not id_album:
         id_album = insertar_album(
@@ -207,7 +205,7 @@ def _gestionar_albumes(
             revisado=False, 
             db=db
         )
-        logger.debug(f"Álbum '{clase_album.titulo}'. ID: {id_album}.")
+        logger.debug(f"Álbum '{clase_album.titulo}' Insertado. ID: {id_album}.")
     if clase_album.codigo:
         val = insertar_codigo(
             id_entidad=id_album,
@@ -216,8 +214,6 @@ def _gestionar_albumes(
             codigo=clase_album.codigo,
             db=db
         )
-        if val == 1:
-            logger.debug("Codigo Insertado.")
 
     return id_album
 
@@ -264,8 +260,6 @@ def pipeline_insertar_paquete(
         if not id_genero:
             id_genero = insertar_genero(genero=clase_genero, db=ruta_base_datos)
             logger.debug(f"Genero '{clase_genero.nombre}' Insertado. ID {id_genero}")
-        else:
-            logger.debug(f"Gro: {clase_genero.nombre}. ID: {id_genero}")
 
     sal_art = _obtener_o_insertar_artista(
         clase_artista=clase_artistas.principal,
@@ -307,20 +301,22 @@ def pipeline_insertar_paquete(
         lista_colabs=ids_colab+ids_ft or [],
         db=ruta_base_datos
     )
-    
+
+    logger.debug(f"Local IDs | Art:{id_artista} - Alb:{id_album} - Can:{id_cancion} - Gen:{id_genero}")
     # -------------------
     # Vincular los datos
     # -------------------
     if id_genero:
         try:
-            num = vincular_genero_cancion(
+            vincular_genero_cancion(
                 id_genero=id_genero,
                 id_cancion=id_cancion,
                 db=ruta_base_datos
             )
-            logger.debug("Genero y Canción vinculados correctamente.")
+            #logger.debug("Genero y Canción vinculados correctamente.")
         except sqlite3.IntegrityError:
-            logger.debug("Genero y Canción ya vinculados.")
+            #logger.debug("Genero y Canción ya vinculados.")
+            pass
     try:
         vincular_cancion_album(
             id_cancion=id_cancion,
@@ -328,9 +324,10 @@ def pipeline_insertar_paquete(
             nro_pista=clase_cancion.num_pista,
             db=ruta_base_datos
         )
-        logger.debug("Canción y Álbum vinculados Correctamente.")
+        #logger.debug("Canción y Álbum vinculados Correctamente.")
     except sqlite3.IntegrityError:
-        logger.debug("Canción y Álbum ya vinculados.")
+        #logger.debug("Canción y Álbum ya vinculados.")
+        pass
 
     if not vinculado:
         try:
@@ -344,113 +341,11 @@ def pipeline_insertar_paquete(
                 vincular_artista_cancion(c, id_cancion, "Colaborador", ruta_base_datos) 
             for f in ids_ft:
                 vincular_artista_cancion(f, id_cancion, "Feature", ruta_base_datos)
-            logger.debug("Artista(s) y Canción Vinculados Correctamente.")
+            #logger.debug("Artista(s) y Canción Vinculados Correctamente.")
         except ErrorVincularDatos:
             raise
 
-
-def pipeline_insertar_paquete_lista(
-        lista_paquetes: List[PaqueteDatos], 
-        codigo_ident: int,
-        ruta_base_datos: Path | None = None,
-        vincular: bool = True
+def pipeline_insertar_canciones_de_album(
+        paquete_album: PaqueteDatos
 ) -> None:
-    """Versión para insertar una lista de Paquetes.
-
-    """
-
-    for paquete_datos in lista_paquetes:
-        clase_genero = paquete_datos.genero
-        clase_artistas = paquete_datos.artistas
-        clase_album = paquete_datos.album
-        clase_cancion = paquete_datos.cancion
-
-        # Obtener o insertar Genero
-        id_genero = 0
-        if clase_genero:
-            id_genero = buscar_genero(nombre_genero=clase_genero.nombre, db=ruta_base_datos)
-            if not id_genero:
-                id_genero = insertar_genero(genero=clase_genero, db=ruta_base_datos)
-                logger.debug(f"Genero '{clase_genero.nombre}' Insertado. ID {id_genero}")
-            else:
-                logger.debug(f"Gro: {clase_genero.nombre}. ID: {id_genero}")
-
-        sal_art = _obtener_o_insertar_artista(
-            clase_artista=clase_artistas.principal,
-            codigo_identificador=codigo_ident,
-            db=ruta_base_datos
-        )
-        id_artista = sal_art.id_local
-
-        # Obtener o insertar Artistas Colaboradores - Feature
-        ids_colab: List[int] = []
-        for colab in (clase_artistas.colaboradores or []):
-            sal = _obtener_o_insertar_artista(
-                clase_artista=colab,
-                codigo_identificador=codigo_ident,
-                db=ruta_base_datos
-            )
-            ids_colab.append(sal.id_local)
-    
-        ids_ft: List[int] = []
-        for feat in (clase_artistas.feat or []):
-            sal = _obtener_o_insertar_artista(
-                clase_artista=feat,
-                codigo_identificador=codigo_ident,
-                db=ruta_base_datos
-            )
-            ids_ft.append(sal.id_local)
-    
-        id_album = _gestionar_albumes(
-            clase_album=clase_album,
-            id_artista=id_artista,
-            codigo_ident=codigo_ident,
-            db=ruta_base_datos
-        )
-
-        (id_cancion, vinculado) = _gestionar_canciones(
-            clase_cancion=clase_cancion,
-            id_artista=id_artista,
-            codigo_ident=codigo_ident,
-            lista_colabs=ids_colab+ids_ft or [],
-            db=ruta_base_datos
-        )
-        
-        # -------------------
-        # Vincular los datos
-        # -------------------
-        if id_genero and vincular:
-            try:
-                num = vincular_genero_cancion(
-                    id_genero=id_genero,
-                    id_cancion=id_cancion,
-                    db=ruta_base_datos
-                )
-            except sqlite3.IntegrityError:
-                logger.debug("Genero y Canción ya vinculados.")
-        if vincular:
-            try:
-                vincular_cancion_album(
-                    id_cancion=id_cancion,
-                    id_album=id_album,
-                    nro_pista=clase_cancion.num_pista,
-                    db=ruta_base_datos
-                )
-            except sqlite3.IntegrityError:
-                logger.debug("Canción y Álbum ya vinculados.")
-
-        if not vinculado and vincular:
-            try:
-                vincular_artista_cancion(
-                    id_artista=id_artista,
-                    id_cancion=id_cancion,
-                    rol="Principal",
-                    db=ruta_base_datos
-                )
-                for c in ids_colab:
-                    vincular_artista_cancion(c, id_cancion, "Colaborador", ruta_base_datos) 
-                for f in ids_ft:
-                    vincular_artista_cancion(f, id_cancion, "Feature", ruta_base_datos)
-                logger.debug("Artista(s) y Canción Vinculados Correctamente.")
-            except ErrorVincularDatos:
-                raise
+    pass

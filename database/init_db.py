@@ -3,12 +3,12 @@
 
 from pathlib import Path
 from config.settings import get_connection
-from config.setup import DB_PATH
+from config.setup import RUTA_DATABASE
 
 SQL_PATH = Path(__file__).parent.parent / "models" / "SQL" / "SQLite3_v5.sql"
 
 
-def iniciar_base_datos(base_datos: Path | None = DB_PATH) -> None:
+def iniciar_base_datos(base_datos: Path | None = RUTA_DATABASE) -> None:
     """
     Crea las tablas si no existen.
     Si no se pasa ruta, usa la ruta por defecto definida en settings.py.

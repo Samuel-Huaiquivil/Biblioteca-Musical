@@ -4,6 +4,8 @@ from collections.abc import Callable
 from datetime import date
 from typing import List, Tuple, Any
 
+from models.schemas_v5 import PaqueteDatos
+
 
 @dataclass
 class ItemNormalizado:
@@ -11,8 +13,9 @@ class ItemNormalizado:
     lanzamiento: str = ""
     artista_principal: str = ""
     codigo_album: str = ""
-    ptje_referencia: int = 0
     url_descarga: str = ""
+    ptje_referencia: int = 0
+    titulo_version: str = ""
 
 
     def formatear_fecha(self) -> str:
@@ -31,6 +34,14 @@ class ItemNormalizado:
             "Puntaje Ref.": self.ptje_referencia,
             "URL": self.url_descarga
         }
+
+    def comparar_paquete(self, paquete: PaqueteDatos) -> bool:
+        "Compara el Item Normalizado con un Paquete Datos"
+        cls_alb = paquete.album
+        if self.codigo_album == cls_alb.codigo:
+            return True
+        else:
+            return False
 
 # ---------------------------------------------------------------------------
 # Modelo para clasificar y puntuar Datos

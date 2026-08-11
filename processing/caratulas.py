@@ -1,32 +1,33 @@
 # processing/caratulas.py
 from pathlib import Path
-from typing import List, Optional, Tuple
-from difflib import SequenceMatcher
+from typing import List, Tuple
+
 from collections import Counter
 
-from models.schemas_adapter import AdaptadorMBZ, NormalizadorItunes, NormalizadorMBZ
+from models.schemas_adapter import AdaptadorItunes, AdaptadorMBZ, NormalizadorItunes, NormalizadorMBZ
 from models.schemas_itunes_v5 import RespuestaItunes
 from models.schemas_mbz import RespuestaMbz
 from models.schemas_motor import MotorPuntuador, DatosLote, ItemNormalizado
-
 from models.schemas_v5 import PaqueteDatos
-from processing.imagenes import descargar_estandar_itunes, descargar_estandar_mbz, get_url, guardar_bytes_imagen
-from utils.errores import ErrorAPI, ErrorArchivo, ErrorConsulta, ErrorCoverArchive
+from utils.errores import ErrorAPI, ErrorArchivo
 from utils.logging_class import PipelineLog
+
+from api.itunes import descargar_caratula_itunes
+from api.coverarchive import descargar_caratula_coverarchive, get_url
+from utils.gestion_archivos import guardar_bytes_imagen
+from utils.reglas_puntuador import validadores, reglas_itunes, reglas_mbz
 
 logger = PipelineLog(__name__)
 
-def truncar_msg(msg: str, max_len=80) -> str:
+# =================================
+# FUNCIONES AUXILIARES
+# =================================
+
+def _truncar_msg(msg: str, max_len=80) -> str:
     return msg if len(msg) <= max_len else msg[:max_len] + "..."
 
-_PALABRAS_COMPILACION = [
-    "hits", "gran", "exitos", "éxitos", "colec", "definitiva",
-    "edici", "mejor", "canciones", "edition", "songs",
-    "best of", "collection", "definitive", "essential",
-    "vol."
-]
 
-def crear_lote(items: List[ItemNormalizado], art: str = "", tit: str = "", prioridad: int = 3) -> DatosLote:
+def _crear_lote(items: List[ItemNormalizado], art: str = "", tit: str = "", prioridad: int = 3) -> DatosLote:
     '''
     prioridad: Valor del 1 - 10 que indica la prioridad que se le da a los parametros de artista y titulo. 1-> Máxima, 10-> Mínima.
     '''
@@ -62,139 +63,40 @@ def crear_lote(items: List[ItemNormalizado], art: str = "", tit: str = "", prior
     )
 
 
-# =================================
-# Validadores y Reglas 
-# =================================
+def _item_to_paquete_itunes(item_norm: ItemNormalizado, modelos: List[RespuestaItunes]) -> PaqueteDatos:
+    "Transforma un item normalizado a su modelo orginal y luego a un paquete datos"
+    if not modelos:
+        raise ValueError("No se ingresaron los modelos")
+    
+    codigo_alb = item_norm.codigo_album
+    resp_itunes = modelos[0]
 
-def _validar_datos_minimos(item: ItemNormalizado) -> bool:
-    return bool(
-        item.artista_principal
-        and item.titulo_album
-        and item.codigo_album
-    )
+    for modelo in modelos:
+        id_alb = modelo.collectionId
+        if codigo_alb == id_alb:
+            resp_itunes = modelo
+            break
 
-def _es_compilacion(item: ItemNormalizado, dts_lote: DatosLote) -> Tuple[str, float]:
-    nombre = item.titulo_album.lower()
-    artista = item.artista_principal.lower()
-    palabras = _PALABRAS_COMPILACION + [artista]
-    if any(p in nombre for p in palabras):
-        return "Es compilación", 0
+    adaptador = AdaptadorItunes()
+
+    paq = None
+    
+    if resp_itunes.es_single():
+        paq = adaptador.convertir_album_single(resp_itunes)
+
+    elif resp_itunes.es_extended():
+        paq = adaptador.convertir_album_extend(resp_itunes)
+
+    elif resp_itunes.tiene_multiples_artistas():
+        paq = adaptador.convertir_mult_artistas(resp_itunes)
+
     else:
-        return "No es Compilacion", 0.2
+        paq = adaptador.convertir_art_simple(resp_itunes)
 
-def _artista_moda(item: ItemNormalizado, dts_lote: DatosLote) -> Tuple[str, float]:
-    art_ref = dts_lote.moda_art
-    artista = item.artista_principal
-    ptje = SequenceMatcher(None, art_ref, artista).quick_ratio()
-    return "Artista Moda", ptje * 0.3 
+    if not paq:
+        raise ValueError("No se pudo transformar los datos")
 
-def _titulo_moda(item: ItemNormalizado, dts_lote: DatosLote) -> Tuple[str, float]:
-    tit_ref = dts_lote.moda_tit
-    titulo = item.titulo_album
-    ptje = SequenceMatcher(None, tit_ref, titulo).quick_ratio()
-    return "Titulo Moda", ptje * 0.3
-
-def _fecha_lanzamiento(item: ItemNormalizado, dts_lote: DatosLote) -> Tuple[str, float]:
-    f_min = dts_lote.fecha_min
-    if not f_min:
-        return "Sin Fecha", 0
-    lanz = item.lanzamiento or "9999-99-99"
-    if f_min[:4] == lanz[:4]:
-        return f"Primer Lanzamiento ({f_min[:4]})", 0.1
-    else:
-        return "Lanzamiento Posterior", 0
-
-def _puntaje_referencia(item: ItemNormalizado, dts_lote: DatosLote) -> Tuple[str, float]:
-    ptje = item.ptje_referencia
-    return f"Puntaje Referencia {ptje}", ptje * 0.09
-
-def _varios_artistas(item:ItemNormalizado, dts_lote: DatosLote) -> Tuple[str, float]:
-    art_album = item.artista_principal
-    if "various artists" in art_album.lower():
-        return f"Compilacion Varios Artistas", 0.0
-    else:
-        return "Album de Artista", 0.05
-
-def _artista_moda_mbz(item: ItemNormalizado, dts_lote: DatosLote) -> Tuple[str, float]:
-    art_ref = dts_lote.moda_art
-    artista = item.artista_principal
-    ptje = SequenceMatcher(None, art_ref, artista).quick_ratio()
-    return "Artista Moda", ptje * 0.3
-
-def _titulo_moda_mbz(item: ItemNormalizado, dts_lote: DatosLote) -> Tuple[str, float]:
-    tit_ref = dts_lote.moda_tit
-    titulo = item.titulo_album
-    ptje = SequenceMatcher(None, tit_ref, titulo).quick_ratio()
-    return "Titulo Moda", ptje * 0.2
-
-
-Validadores = [
-    _validar_datos_minimos
-]
-
-reglas_itunes = [
-    _es_compilacion,
-    _artista_moda,
-    _titulo_moda,
-    _fecha_lanzamiento
-]
-
-reglas_mbz = [
-    _fecha_lanzamiento,
-    _puntaje_referencia,
-    _varios_artistas,
-    _titulo_moda_mbz,
-    _artista_moda_mbz
-]
-
-
-
-# =================================
-# Normalizar
-# =================================
-
-
-def normalizar_item_itunes(item: dict) -> ItemNormalizado:
-    titulo = item.get("collectionName") or item.get("trackName") or ""
-    lanzamiento = item.get("releaseDate", "")
-    artista = item.get("collectionArtistName") or item.get("artistName") or ""
-    codigo = item.get("collectionId") or item.get("trackId") or ""
-    url = (
-        item.get("artworkUrl100")
-        or item.get("artworkUrl60")
-        or item.get("artworkUrl30")
-        or ""
-    )
-    return ItemNormalizado(
-        titulo_album=titulo,
-        lanzamiento=lanzamiento,
-        artista_principal=artista,
-        codigo_album=str(codigo),
-        url_descarga=url
-    )
-
-
-def normalizar_item_mbz(item: dict) -> ItemNormalizado:
-    titulo = item.get("title", "")
-    if item.get("disambiguation"):
-        titulo = f"{titulo} {item.get('disambiguation')}".strip()
-    lanzamiento = item.get("date") or item.get("release_date", "")
-    artista = ""
-    artist_credit = item.get("artist-credit") or item.get("artist_credit")
-    if isinstance(artist_credit, list) and artist_credit:
-        primer = artist_credit[0]
-        if isinstance(primer, dict):
-            artista = primer.get("name") or primer.get("artist", {}).get("name", "")
-    artista = artista or item.get("artist") or item.get("artistName") or ""
-    codigo = item.get("id", "")
-    url = item.get("url", "") or ""
-    return ItemNormalizado(
-        titulo_album=titulo,
-        lanzamiento=lanzamiento,
-        artista_principal=artista,
-        codigo_album=str(codigo),
-        url_descarga=url
-    )
+    return paq
 
 
 # =================================
@@ -207,31 +109,32 @@ def pipeline_caratulas_itunes(
         artista: str,
         titulo: str,
         ruta_imagenes: Path
-    ) -> Tuple[Path, ItemNormalizado]:
+    ) -> Tuple[Path, PaqueteDatos]:
     '''
     Gestiona las carátulas
     '''
     logger.proceso("Descarga de Carátulas")
 
-    lista_items = []
-    lista_tuplas = []
+    lista_items: List[ItemNormalizado] = []
+    lista_modelos: List[RespuestaItunes] = []
 
     normalizador = NormalizadorItunes()
 
     for dicc in lista_dicc:
         modelo = RespuestaItunes.model_validate(dicc)
         item = normalizador.normalizar(modelo)
+
+        lista_modelos.append(modelo)
         lista_items.append(item)
-        lista_tuplas.append((item, modelo))
 
     logger.debug(f"Elementos validados: [{len(lista_items)}]")
 
     motor = MotorPuntuador(
-        validadores=Validadores,
+        validadores=validadores,
         reglas=reglas_itunes
     )
 
-    lote_datos = crear_lote(lista_items, artista, titulo)
+    lote_datos = _crear_lote(lista_items, artista, titulo)
 
     res, des = motor.puntuar(lista_items, lote_datos)
 
@@ -239,18 +142,21 @@ def pipeline_caratulas_itunes(
 
     for r in res:
         count += 1
-        alb_tit = truncar_msg(r.item.titulo_album, 40)
+        alb_tit = _truncar_msg(r.item.titulo_album, 40)
         try:
             logger.debug(f"Intento N° {count}. '{alb_tit}'." )
             url = r.obtener_url()
-            img_bytes = descargar_estandar_itunes(url)
+            img_bytes = descargar_caratula_itunes(url)
             img = guardar_bytes_imagen(img_bytes, r.item.codigo_album, ruta_imagenes)
-            return (img, r.item)
+
+            paq = _item_to_paquete_itunes(r.item, lista_modelos)
+            
+            return (img, paq)
         except Exception as e:
             logger.debug(
                 f"No se pudo obtener la carátula. Detalles: {str(e)}.",
             )
-
+            continue
 
     logger.warning(
         "No se obtuvo una carátula válida desde iTunes.",
@@ -266,34 +172,41 @@ def pipeline_caratulas_itunes(
         "No se pudo obtener una carátula válida desde iTunes."
     )
 
+
 def pipeline_caratulas_mbz(
         lista_dicc: List[dict],
         artista: str,
         titulo: str,
         ruta_imagenes: Path
-    ) -> Tuple[Path, ItemNormalizado]:
+    ) -> Tuple[Path, PaqueteDatos]:
     '''
     Gestiona las carátulas
     '''
     logger.proceso("Descarga de Carátulas")
 
     lista_items: List[ItemNormalizado] = []
-
+    lista_paquetes: List[PaqueteDatos] = []
+    
     normalizador = NormalizadorMBZ()
+    adaptador = AdaptadorMBZ()
 
     for dicc in lista_dicc:
         modelo = RespuestaMbz.model_validate(dicc)
+
+        paquetes = adaptador.conv_respuesta_global(modelo, False)
         l_item = normalizador.normalizar(modelo)
+
+        lista_paquetes.extend(paquetes)
         lista_items.extend(l_item)
 
     logger.debug(f"Elementos validados: [{len(lista_items)}]")
     
     motor = MotorPuntuador(
-        validadores=Validadores,
+        validadores=validadores,
         reglas=reglas_mbz
     )
 
-    lote_datos = crear_lote(lista_items, artista, titulo, 1)
+    lote_datos = _crear_lote(lista_items, artista, titulo, 1)
 
     res, des = motor.puntuar(lista_items, lote_datos)
 
@@ -301,7 +214,7 @@ def pipeline_caratulas_mbz(
 
     for r in res:
         count += 1
-        alb_tit = truncar_msg(r.item.titulo_album, 40)
+        alb_tit = _truncar_msg(r.item.titulo_album, 40)
         try:
             logger.debug(f"Intento N° {count}. '{alb_tit}'." )
             url = r.obtener_url()
@@ -309,11 +222,19 @@ def pipeline_caratulas_mbz(
             datos = resp.json()
             imagenes = datos.get("images", [])
 
-            img_bytes = descargar_estandar_mbz(imagenes)
+            img_bytes = descargar_caratula_coverarchive(imagenes)
 
             ruta_salida =  guardar_bytes_imagen(img_bytes, r.item.codigo_album, ruta_imagenes)
 
-            return (ruta_salida, r.item)
+            paquete = None
+            for paq in lista_paquetes:
+                if r.item.comparar_paquete(paq):
+                   paquete = paq 
+
+            if paquete:
+                return (ruta_salida, paquete)
+            else:
+                continue
 
         except ErrorAPI as eap:
             logger.debug(

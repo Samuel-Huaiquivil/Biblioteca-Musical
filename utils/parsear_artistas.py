@@ -101,16 +101,29 @@ Diseño:
 _FEAT = r"feat(?:uring)?\.?\s*|ft\.?\s*"
 
 # Palabras clave de versión — se expanden fácilmente agregando alternativas
-_VER  = (
+_VER = (
     r"single"
+    r"|ep"
+    r"|lp"
+    r"|album"
+    r"|mixtape"
+    r"|compilation"
+    r"|soundtrack"
     r"|deluxe(?:\s+edition)?"
+    r"|special\s+edition"
+    r"|anniversary\s+edition"
+    r"|box\s+set"
     r"|remaster(?:ed)?"
     r"|live(?:\s+version)?"
     r"|radio\s+edit"
     r"|acoustic(?:\s+version)?"
+    r"|instrumental"
     r"|remix(?:\s+version)?"
+    r"|extended\s+mix"
+    r"|club\s+mix"
+    r"|demo"
+    r"|bonus\s+track"
 )
-
 
 _PATRONES: List[re.Pattern] = [
     re.compile(

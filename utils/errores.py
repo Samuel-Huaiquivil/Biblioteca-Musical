@@ -2,13 +2,12 @@
 # === Excepciones Base ===
 
 
-# === Excepciones Generales ===
-
 class ErrorBaseDatos(Exception):
     "Error al operar con la Base de Datos."
     def __init__(self, mensaje, data= None) -> None:
         super().__init__(mensaje)
         self.data = data
+
 
 class ErrorAPI(Exception):
     "Error con la API externa."
@@ -16,13 +15,16 @@ class ErrorAPI(Exception):
         super().__init__(mensaje)
         self.data = data
 
+
 class ErrorArchivo(Exception):
     "Error al manejar un archivo local"
     def __init__(self, mensaje, data= None) -> None:
         super().__init__(mensaje)
         self.data = data
 
+
 # === Excepciones Puntuales ===
+
 
 class ErrorCodigos(ErrorBaseDatos):
     '''
@@ -77,9 +79,18 @@ class ErrorVincularDatos(ErrorBaseDatos):
         super().__init__(msg)
 
 
+class ErrorImagen(ErrorArchivo):
+    '''
+    Error al operar los bytes de la imagen
+    '''
+    def __init__(self, archivo_imagen: str, detalles: str | None = None) -> None:
+        msg = f"Problemas al operar el archivo '{archivo_imagen}'."
+        super().__init__(msg, detalles)
+
+
 class ErrorConsulta(ErrorAPI):
     '''
-    Error estándar de una consulta
+    Error genérico de una consulta
     '''
     def __init__(self, mensaje, data=None) -> None:
         super().__init__(mensaje, data)
@@ -90,20 +101,17 @@ class ErrorCoverArchive(ErrorAPI):
     Error al obtener la carátula
     '''
     def __init__(self, info: str, detalles: str | None = None):
-        msg = f"Problemas al consultar con CoverArtArchive: {info}."
+        msg = f"[CoverArtArchive]: {info}."
         super().__init__(msg, detalles)
 
 
 class ErrorItunes(ErrorAPI):
     def __init__(self, mensaje, data=None) -> None:
-        msg = f"Error con la API de iTunes: {mensaje}"
+        msg = f"[iTunes]: {mensaje}"
         super().__init__(msg, data)
 
 
-class ErrorImagen(ErrorArchivo):
-    '''
-    Error al operar los bytes de la imagen
-    '''
-    def __init__(self, archivo_imagen: str, detalles: str | None = None) -> None:
-        msg = f"Problemas al operar el archivo '{archivo_imagen}'."
-        super().__init__(msg, detalles)
+class ErrorMusicBrainz(ErrorAPI):
+    def __init__(self, mensaje, data=None) -> None:
+        msg = f"[MBZ]: {mensaje}"
+        super().__init__(msg, data)

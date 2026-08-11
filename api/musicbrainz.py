@@ -6,25 +6,20 @@
 # - User-Agent obligatorio (nombre app, versión, contacto).
 # - Rate limit: 1 petición/segundo. Sin autenticación.
 # - Formato JSON con &fmt=json.
-import os
+
 import time
 import requests
-import dotenv
-from pydantic import ValidationError
+from typing import Any, Dict
 
-from models.schemas_api import RespuestaMBZ, RecordingMbz
-from utils.errores import ErrorAPI
+from utils.errores import ErrorMusicBrainz
+from config.setup import CORREO_PERSONAL
 
 _URL_BASE  = "https://musicbrainz.org/ws/2"
 _TIMEOUT   = 10
 _INTERVALO = 1.1
 
-dotenv.load_dotenv()
-correo_personal = os.environ.get("CORREO", "correo@example.cl")
-
-
 _HEADERS = {
-    "User-Agent": f"ScriptBibliotecaMusical/2.3 ({correo_personal})"
+    "User-Agent": f"ScriptBibliotecaMusical/2.5 ({CORREO_PERSONAL})"
 }
 
 _ultimo_request: float = 0.0
@@ -51,20 +46,20 @@ def _get(endpoint: str, params: dict) -> dict:
         response.raise_for_status()
         return response.json()
     except requests.exceptions.Timeout:
-        raise ErrorAPI("MusicBrainz", "La petición superó el tiempo límite.")
+        raise ErrorMusicBrainz("La petición superó el tiempo límite.")
     except requests.exceptions.ConnectionError:
-        raise ErrorAPI("MusicBrainz", "No se pudo conectar. Verifica tu conexión.")
+        raise ErrorMusicBrainz("No se pudo conectar. Verificar la conexión.")
     except requests.exceptions.HTTPError as e:
-        raise ErrorAPI("MusicBrainz", f"Error HTTP {e.response.status_code}.")
+        raise ErrorMusicBrainz(f"Error HTTP", f"{e.response.status_code}.")
     except Exception as e:
-        raise ErrorAPI("MusicBrainz", str(e))
+        raise ErrorMusicBrainz("Error no Registrado.", str(e))
 
 
 # ---------------------------------------------------------------------------
 # Búsqueda principal
 # ---------------------------------------------------------------------------
 
-def buscar_cancion_mbz(titulo: str, artista: str, limite: int = 5) -> list[RecordingMbz]:
+def buscar_cancion_mbz(titulo: str, artista: str, limite: int = 5) -> list[Any]:
     """
     Busca una canción en MusicBrainz por título y artista.
     Retorna los recordings ordenados por score descendente.
@@ -78,53 +73,25 @@ def buscar_cancion_mbz(titulo: str, artista: str, limite: int = 5) -> list[Recor
     query = f'title:"{titulo}" AND artist:"{artista}"'
     data = _get("recording/", {"query": query, "limit": limite})
 
-    try:
-        respuesta = RecordingMbz(**data)
-    except ValidationError as e:
-        raise ErrorAPI("MusicBrainz", f"Respuesta inesperada: {e}") from e
-
-    # Ordenar por score descendente (MusicBrainz ya los envía ordenados,
-    # pero lo hacemos explícito por claridad)
-    return sorted(respuesta, key=lambda r: r.score, reverse=True)
+    return data["recordings"]
 
 
-# ---------------------------------------------------------------------------
-# Selección del mejor resultado
-# ---------------------------------------------------------------------------
+def buscar_albumes_artistas_mbz(id_artista: str, limite: int = 10):
+    if not id_artista:
+        raise ValueError("ID Artista es obligatorio")
+    
+    query = f"?artist={id_artista}&type=album"
+    resp = _get("release-group", {"query": query, "limit": limite})
+    return resp
 
-def obtener_mejor_recording(recordings: list[RecordingMbz]) -> RecordingMbz | None:
-    """
-    Selecciona el recording más adecuado de la lista.
 
-    Criterios adicionales al score de MusicBrainz:
-    - Prefiere releases con status 'Official' sobre Bootleg/Promotion.
-    - Penaliza recordings sin releases asociados.
-    - En empate, prefiere el release con fecha más antigua (original).
-    """
-    if not recordings:
-        return None
+def buscar_cancion_mbz_oficial(titulo: str, artista: str, limite: int = 5) -> Dict:
+    if not titulo or not artista:
+        raise ValueError("Título y artista son obligatorios.")
 
-    def puntaje(rec: RecordingMbz) -> float:
-        puntos = float(rec.score)
+    query=f'recording:"{titulo}" AND artist:"{artista}" AND status:official AND primarytype:album'
 
-        releases_oficiales = [
-            r for r in rec.releases if r.status.lower() == "official"
-        ]
+    data = _get("recording/", {"query": query, "limit": limite})
+    return data
 
-        if not rec.releases:
-            puntos -= 20        # Sin álbum asociado es sospechoso
-        elif releases_oficiales:
-            puntos += 10        # Tiene al menos un release oficial
 
-            # Bonus por release más antiguo (versión original)
-            fechas = [r.date for r in releases_oficiales if r.date]
-            if fechas:
-                fecha_min = min(fechas)
-                if len(fecha_min) >= 4:  # al menos tiene el año
-                    anio = int(fecha_min[:4])
-                    # Pequeño bonus inversamente proporcional al año
-                    puntos += max(0, (2000 - anio) * 0.1)
-
-        return puntos
-
-    return max(recordings, key=puntaje)

@@ -1,6 +1,6 @@
 from pathlib import Path
 import sqlite3
-from typing import List
+from typing import List, Tuple
 
 from config.settings import get_connection
 from models.schemas_v5 import Ident, Codigo
@@ -140,3 +140,12 @@ def insertar_codigo(
         return num
     except Exception as identifier:
         raise ErrorCodigos(tipo, f"{str(identifier)}")
+
+_IDENT_GLOBAL = Ident(api="MusicBrainz", region="Global", id=0)
+_IDENT_GROUP = Ident(api="MusicBrainz", region="Groups", id=0)
+
+def obtener_ident_mbz(base_datos: Path | None = None) -> Tuple[int, int]:
+    "Obtiene el identificador de Grupo y el Global"
+    id_grp = obt_ins_identificador(_IDENT_GLOBAL, base_datos)
+    id_glb = obt_ins_identificador(_IDENT_GROUP, base_datos)
+    return (id_grp, id_glb)

@@ -36,7 +36,7 @@ def _paquete_to_datos_musica(paquete: PaqueteDatos) -> DatosMusica:
 # ---------------------------------------------------------------------------
 
 
-def pipeline_mutagen(ruta_mp3: Path, paquete: PaqueteDatos, ruta_img: Path) -> Path:
+def pipeline_mutagen(ruta_mp3: Path, paquete: PaqueteDatos, ruta_img: Path | None = None) -> Path:
     '''
     Inserta los datos al archivo
     '''
@@ -46,6 +46,7 @@ def pipeline_mutagen(ruta_mp3: Path, paquete: PaqueteDatos, ruta_img: Path) -> P
 
     escribir_tags(ruta_mp3, datos)
 
-    incrustar_portada(ruta_mp3, ruta_img)
+    if ruta_img:
+        incrustar_portada(ruta_mp3, ruta_img)
 
     return ruta_mp3

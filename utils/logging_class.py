@@ -57,8 +57,8 @@ class PipelineLog:
         )
 
         handler_archivo = logging.FileHandler(
-            ruta_log,
-            mode="w",
+            ruta_log / "archivo_log.log",
+            mode="a",
             encoding="utf-8",
         )
         handler_archivo.setLevel(logging.DEBUG)
@@ -68,10 +68,9 @@ class PipelineLog:
         handler_consola.setLevel(logging.INFO)
         handler_consola.setFormatter(formatter_consola)
 
-        ruta_json = ruta_log.parent
         handler_json = logging.FileHandler(
-            filename=ruta_json / "pipeline_debug.json",
-            mode="w",
+            filename=ruta_log / "errores_debug.json",
+            mode="a",
             encoding="utf-8",
             delay=True,
         )
@@ -106,6 +105,12 @@ class PipelineLog:
     def proceso(self, nombre: str):
         self._logger.info(msg=f"Iniciando el Proceso: {nombre}")
 
+    def etapa_inicio(self, etapa: str):
+        self._logger.info(msg=f" == Iniciando: {etapa}. == ")
+
+    def etapa_final(self, etapa: str):
+        self._logger.info(msg=f" == {etapa} Finalizada. == ")
+    
     @staticmethod
     def _empaquetar(extra: dict | None) -> dict | None:
         """

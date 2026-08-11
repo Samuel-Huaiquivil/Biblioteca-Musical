@@ -1,13 +1,16 @@
 # database/busqueda.py
 """Funciones de búsqueda de entidades locales en la base de datos."""
-
+import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Tuple, Optional
 
 from config.settings import get_connection
 from database.ident import obtener_codigos
-from models.schemas_v5 import Codigo, SalidaArtista, SalidaAlbum, SalidaCancion
-
+from models.schemas_v5 import (
+    Codigo, SalidaArtista, SalidaAlbum, 
+    SalidaCancion, Cancion, Genero, 
+    Artista, GrupoArtistas, Album, PaqueteDatos
+)
 from utils.errores import ErrorBusquedaLocal, ErrorCodigos
 
 # =========================
@@ -23,7 +26,7 @@ def buscar_artista(nombre_artista: str, db: Path | None = None) -> SalidaArtista
         db: Ruta de la base de datos. Si es ``None``, se usa la ruta por defecto.
 
     Returns:
-        Un objeto :class:`SalidaArtista` con el identificador local y el nombre
+        Un objeto `SalidaArtista` con el identificador local y el nombre
         del artista si existe; de lo contrario, ``None``.
 
     Raises:
@@ -134,6 +137,39 @@ def buscar_canciones_album(id_album: int, db: Path | None = None) -> List[Salida
         raise ValueError(f"Error: {identifier}")
 
 
+def buscar_cancion_en_album(id_cancion: int, db: Path | None = None) -> List[Tuple[SalidaAlbum, int]]:
+    if not id_cancion:
+        raise ValueError(f"El id de la canción no puede estar vacío")
+    try:
+        lista_salida: List[Tuple[SalidaAlbum, int]] = []
+        with get_connection(db) as conn:
+            alb = conn.execute('''
+                SELECT ca.numero_cancion,
+                    a.id_album, a.titulo_album,
+                    a.pistas_totales, a.fecha_lanzamiento
+                FROM Canciones_Albumes ca
+                JOIN Albumes a ON ca.id_album = a.id_album
+                WHERE ca.id_cancion = ?;
+                ''', (id_cancion,)
+            ).fetchall()
+        if not alb:
+            return []
+        else:
+            for a in alb:
+                lista_salida.append(
+                    (
+                        SalidaAlbum(
+                            id_local=a[1],
+                            titulo=a[2],
+                            pistas_totales=a[3],
+                            lanzamiento=a[4],
+                        ), a[0])
+                )
+        return lista_salida
+    except Exception as identifier:
+        raise ValueError(f"Error: {identifier}")
+
+
 def buscar_canciones_artista(id_artista: int, db: Path | None = None) -> List[SalidaCancion]:
     """Obtiene las canciones asociadas a un artista.
 
@@ -175,6 +211,29 @@ def buscar_canciones_artista(id_artista: int, db: Path | None = None) -> List[Sa
                     )
                 )
         return lista_canciones
+    except Exception as identifier:
+        raise ValueError(f"Error: {identifier}")
+
+
+def buscar_genero_cancion(id_cancion: int, db: Path | None = None) -> List[str]:
+    if not id_cancion:
+        raise ValueError(f"El nombre del género no puede estar vacío")
+    try:
+        generos: List[str] = []
+        with get_connection(db) as conn:
+            gen = conn.execute('''
+                SELECT g.nombre_genero 
+                FROM Generos_Canciones gc
+                JOIN Generos g ON gc.id_genero = g.id_genero
+                WHERE gc.id_cancion = ?;
+                ''', (id_cancion,)
+            ).fetchall()
+        if not gen:
+            return generos
+        else:
+            for g in gen:
+                generos.append(g[0])
+            return generos
     except Exception as identifier:
         raise ValueError(f"Error: {identifier}")
 
@@ -313,6 +372,22 @@ def buscar_col_ft_cancion(id_cancion: int, db: Path | None = None) -> List[int]:
         raise ErrorBusquedaLocal("Artista * Cancion", f"ID Cancion {id_cancion}", f"{identifier}") from identifier
 
 
+def buscar_artistas_id(lista_ids: List[int], db: Path | None = None):
+    try:
+        lista_busq: List[str] = []
+        with get_connection(db) as conn:
+            for id in lista_ids:
+                art = conn.execute('''
+                    SELECT nombre_artista
+                    FROM Artistas
+                    WHERE id_artista = ?;
+                    ''', (id,)
+                ).fetchone()
+                lista_busq.append(art[0])
+        return lista_busq
+    except Exception as identifier:
+        raise ValueError(f"Error: {identifier}")
+
 # =========================
 # FUNCIONES COMPUESTAS
 # =========================
@@ -441,3 +516,82 @@ def buscar_canciones_artista_cod(id_artista: int, codigo_ident: int, db: Path | 
             return res
     except Exception as identifier:
         raise
+
+
+
+def busqueda_paquete_local(
+        artista: str,
+        titulo: str,
+        ruta_base_datos: Path | None
+) -> Optional[PaqueteDatos]:
+    sal_art = buscar_artista(nombre_artista=artista, db=ruta_base_datos)
+    if not sal_art:
+        return None
+
+    canciones = buscar_canciones_artista(id_artista=sal_art.id_local, db=ruta_base_datos)
+
+    sal_can = None
+    for cancion in canciones:
+        if cancion.titulo.lower() == titulo.lower():
+            sal_can = cancion
+            break
+        else:
+            continue
+
+    if not sal_can:
+        return None
+
+    # Busqueda y creación de Paquete
+    lista_albumes_nro = buscar_cancion_en_album(id_cancion=sal_can.id_local, db=ruta_base_datos)
+
+    if not lista_albumes_nro:
+        return None
+    
+    f_min = datetime.datetime.now()
+    alb_final = lista_albumes_nro[0][0]
+    nro_final = lista_albumes_nro[0][1]
+    for album_nro in lista_albumes_nro:
+        alb = album_nro[0]
+        nro = album_nro[1]
+        if alb.lanzamiento <= f_min.date():
+            alb_final = alb
+            nro_final = nro
+        else:
+            continue
+
+    id_colab = buscar_col_ft_cancion(id_cancion=sal_can.id_local, db=ruta_base_datos)
+    nombres_colab = []
+    if id_colab:
+        nombres_colab = buscar_artistas_id(lista_ids=id_colab, db=ruta_base_datos)
+    generos = buscar_genero_cancion(id_cancion=sal_can.id_local, db=ruta_base_datos)
+
+    can = Cancion(
+        titulo=sal_can.titulo, 
+        num_pista=nro_final
+    )
+    
+    alb = Album(
+        titulo=alb_final.titulo,
+        lanzamiento=alb_final.lanzamiento
+    )
+
+    lista_colab = []
+    for col in nombres_colab:
+        lista_colab.append(Artista(nombre=col))
+
+    grp_art = GrupoArtistas(
+        principal=Artista(nombre=sal_art.nombre),
+        feat=lista_colab
+    )
+    if generos:
+        gen = Genero(nombre=", ".join(generos))
+    else:
+        gen = Genero(nombre="Desconocido")
+
+    return PaqueteDatos(
+        cancion=can,
+        album=alb,
+        artistas=grp_art,
+        genero=gen,
+    )
+    

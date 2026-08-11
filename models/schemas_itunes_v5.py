@@ -72,9 +72,12 @@ class RespuestaItunes(BaseModel):
             id=0
         )
 
-    def es_album_single(self) -> bool:
+    def es_single(self) -> bool:
         """Indica si la respuesta corresponde a un single o álbum corto."""
         return "single" in self.collectionName.lower() and self.trackCount <= 3
+
+    def es_extended(self) -> bool:
+        return "- ep" in self.collectionArtistName.lower() and self.trackCount <= 7 and self.trackCount >=3
 
     def tiene_multiples_artistas(self) -> bool:
         """Determina si la colección está asociada a varios artistas."""
@@ -84,11 +87,11 @@ class RespuestaItunes(BaseModel):
         """Convierte el género de la respuesta en un modelo de dominio."""
         return Genero(nombre=self.primaryGenreName or "Desconocido")
 
-    def to_album(self) -> Album:
+    def to_album(self, fmt: bool = True) -> Album:
         """Convierte la respuesta en un álbum con título y fecha normalizados."""
         clase = parsear_track(self.collectionName)
         return Album(
-            titulo=clase.titulo,
+            titulo=clase.titulo if fmt else self.collectionName,
             lanzamiento=self._fecha_lanzamiento(),
             codigo=str(self.collectionId),
             pistas_totales=self.trackCount
@@ -127,14 +130,27 @@ class RespuestaItunes(BaseModel):
                 codigo=str(self.artistId)
             )
 
-    def to_album_colab(self, single: bool = False) -> Album:
-        """Retorna un álbum con título limpio y, si aplica, marcado como single."""
+    def to_album_sgle(self, fmt: bool = True) -> Album:
+        """Retorna un álbum con título limpio. fmt:= (Single)."""
         clase = parsear_track(self.collectionName)
         tit = clase.titulo
-        if single and "single" not in tit.lower():
-            tit = tit + " (Single)"
+        if fmt and "single" not in tit.lower():
+            tit_fmt = tit + " (Single)"
         return Album(
-            titulo=tit,
+            titulo=tit_fmt if fmt else tit,
+            lanzamiento=self._fecha_lanzamiento(),
+            pistas_totales=self.trackCount,
+            codigo=str(self.collectionId)
+        )
+
+    def to_album_exte(self, fmt: bool = True) -> Album:
+        clase = parsear_track(self.collectionName)
+        tit = clase.titulo
+        tit_fmt = tit
+        if clase.version:
+            tit_fmt = tit + f" ({clase.version})"
+        return Album(
+            titulo=tit_fmt if fmt else tit,
             lanzamiento=self._fecha_lanzamiento(),
             pistas_totales=self.trackCount,
             codigo=str(self.collectionId)
@@ -157,8 +173,8 @@ class RespuestaItunes(BaseModel):
                 if el.lower() != p.lower():
                     colab.append(Artista(nombre=el))
         else:
-            lista = parsear_artistas(self.collectionArtistName)
-            for el in lista:
+            lista = parsear_track(self.collectionArtistName)
+            for el in lista.artistas:
                 if el.lower() != p.lower():
                     colab.append(Artista(nombre=el))
         return colab

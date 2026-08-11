@@ -1,4 +1,3 @@
-from datetime import date, datetime
 from typing import List
 from abc import ABC, abstractmethod
 
@@ -6,6 +5,7 @@ from models.schemas_mbz import RespuestaMbz
 from models.schemas_v5 import Album, Cancion, Artista, GrupoArtistas, PaqueteDatos
 from models.schemas_itunes_v5 import RespuestaItunes
 from models.schemas_motor import ItemNormalizado
+from utils.parsear_artistas import parsear_track
 
 # ---------------------------------------------------------------------------
 # ADAPTADORES PARA LA BASE DE DATOS
@@ -34,7 +34,7 @@ class AdaptadorItunes(AdaptadorBaseDatos):
     def convertir_art_simple(self, itunes: RespuestaItunes) -> PaqueteDatos:
         """Convierte una respuesta sencilla de iTunes con un solo artista principal."""
         gen = itunes.to_genero()
-        alb = itunes.to_album()
+        alb = itunes.to_album(fmt=True)
         can = itunes.to_cancion()
         art = itunes.to_artista_principal(True)
         return PaqueteDatos(
@@ -51,7 +51,7 @@ class AdaptadorItunes(AdaptadorBaseDatos):
     def convertir_mult_artistas(self, itunes: RespuestaItunes) -> PaqueteDatos:
         """Convierte una respuesta con varios artistas y colaboradores."""
         gen = itunes.to_genero()
-        alb = itunes.to_album_colab()
+        alb = itunes.to_album_sgle(fmt=True)
         art = GrupoArtistas(
             principal=itunes.to_artista_principal(),
             colaboradores=itunes.art_colab() or [],
@@ -68,7 +68,23 @@ class AdaptadorItunes(AdaptadorBaseDatos):
     def convertir_album_single(self, itunes: RespuestaItunes) -> PaqueteDatos:
         """Convierte un single o álbum corto, marcando el título como single si aplica."""
         gen = itunes.to_genero()
-        alb = itunes.to_album_colab(single=True)
+        alb = itunes.to_album_sgle(fmt=False)
+        art = GrupoArtistas(
+            principal=itunes.to_artista_principal(),
+            colaboradores=itunes.art_colab() or [],
+            feat=itunes.art_feat() or []
+        )
+        can = itunes.to_cancion()
+        return PaqueteDatos(
+            cancion=can,
+            album= alb,
+            artistas=art,
+            genero=gen
+        )
+
+    def convertir_album_extend(self, itunes: RespuestaItunes) -> PaqueteDatos:
+        gen = itunes.to_genero()
+        alb = itunes.to_album_exte(fmt=False)
         art = GrupoArtistas(
             principal=itunes.to_artista_principal(),
             colaboradores=itunes.art_colab() or [],
@@ -97,7 +113,7 @@ class AdaptadorMBZ(AdaptadorBaseDatos):
         """Convierte una respuesta completa de MusicBrainz en paquetes de álbum/canción/artistas."""
         paquetes: List[PaqueteDatos] = []
         for release in respuesta.releases:
-            album = release.to_album(format=fmt)
+            album = release.to_album(fmt_cod=fmt)
             canciones = release.to_cancion_media()
             artistas = release.to_artistas_album()
             for cancion in canciones:
@@ -125,6 +141,7 @@ class AdaptadorMBZ(AdaptadorBaseDatos):
             )
         return lista
 
+
 # ---------------------------------------------------------------------------
 # ADAPTADORES PARA EL MOTOR DE PUNTUACION
 # ---------------------------------------------------------------------------
@@ -132,7 +149,7 @@ class AdaptadorMBZ(AdaptadorBaseDatos):
 
 class AdaptadorMotor(ABC):
     """Base para normalizar elementos de entrada a un formato común para el motor."""
-
+    @abstractmethod
     def normalizar(self) -> ItemNormalizado:
         """Devuelve un item normalizado vacío por defecto."""
         return ItemNormalizado()
@@ -141,19 +158,23 @@ class AdaptadorMotor(ABC):
 class NormalizadorItunes(AdaptadorMotor):
     """Normaliza una respuesta de iTunes al formato usado por el motor de puntuación."""
 
-    def normalizar(self, item: RespuestaItunes) -> ItemNormalizado:
+    def normalizar(self, item: RespuestaItunes, hd: bool = True) -> ItemNormalizado:
         """Transforma una respuesta de iTunes en un item normalizado."""
-        tit = item.collectionName
+        cls_track = parsear_track(item.collectionName)
         lan = item.releaseDate
         art = item.collectionArtistName or item.artistName
         cod = item.collectionId
-        url = item.get_url(hd=True)
+        url = item.get_url(hd=hd)
+        ver = ""
+        if cls_track.version:
+            ver = cls_track.version.lower()
         return ItemNormalizado(
-            titulo_album=tit,
+            titulo_album=cls_track.titulo.lower(),
             lanzamiento=lan,
-            artista_principal=art,
+            artista_principal=art.lower(),
             codigo_album=str(cod),
-            url_descarga=url
+            url_descarga=url,
+            titulo_version=ver
         )
 
 
@@ -169,22 +190,22 @@ class NormalizadorMBZ(AdaptadorMotor):
         ptje = item.score // 10
         for release in item.releases:
             if release.status != "Official":
-                ptje = 10
+                ptje -= 8
             tit = release.title
-            if release.disambiguation:
-                tit = tit + " " + release.disambiguation
+            ver = release.disambiguation
             lan = release.date
             art = release.to_artistas_album().principal.nombre
             cod = release.id
             url = self.url_mbz(release.id)
             lista_items.append(
                 ItemNormalizado(
-                    titulo_album=tit,
+                    titulo_album=tit.lower(),
                     lanzamiento=lan,
-                    artista_principal=art,
+                    artista_principal=art.lower(),
                     codigo_album=cod,
                     ptje_referencia=ptje,
-                    url_descarga=url
+                    url_descarga=url,
+                    titulo_version=ver.lower() if ver else ""
                 )
             )
         return lista_items
