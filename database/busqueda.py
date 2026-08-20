@@ -1,11 +1,13 @@
 # database/busqueda.py
 """Funciones de búsqueda de entidades locales en la base de datos."""
 import datetime
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import List, Tuple, Optional
 
 from config.settings import get_connection
-from database.ident import obtener_codigos
+from database.ident import obtener_codigos_api
 from models.schemas_v5 import (
     Codigo, SalidaArtista, SalidaAlbum, 
     SalidaCancion, Cancion, Genero, 
@@ -19,22 +21,31 @@ from utils.errores import ErrorBusquedaLocal, ErrorCodigos
 
 
 def buscar_artista(nombre_artista: str, db: Path | None = None) -> SalidaArtista | None:
-    """Busca un artista por su nombre en la base de datos local.
+    """Busca un artista por nombre en la base de datos local.
 
     Args:
-        nombre_artista: Nombre del artista a buscar.
-        db: Ruta de la base de datos. Si es ``None``, se usa la ruta por defecto.
+        nombre_artista: Nombre exacto del artista a buscar. Se ignoran los
+            espacios al principio y al final.
+        db: Ruta de la base de datos. Si es ``None`` se usa la ruta por defecto.
 
     Returns:
         Un objeto `SalidaArtista` con el identificador local y el nombre
         del artista si existe; de lo contrario, ``None``.
 
     Raises:
+        ValueError: Si el nombre no es una cadena válida o está vacío.
         ErrorBusquedaLocal: Si ocurre un error al consultar la base de datos.
     """
+    if not isinstance(nombre_artista, str):
+        raise ValueError("El nombre del artista debe ser una cadena.")
+    nombre_artista = nombre_artista.strip()
+    if not nombre_artista:
+        raise ValueError("El nombre del artista no puede estar vacío.")
+
     try:
-        with get_connection(db) as conn:
-            art = conn.execute('''
+        with closing(get_connection(db)) as conn:
+            with conn:
+                art = conn.execute('''
                 SELECT id_artista, nombre_artista
                 FROM Artistas
                 WHERE nombre_artista = ?;
@@ -47,97 +58,103 @@ def buscar_artista(nombre_artista: str, db: Path | None = None) -> SalidaArtista
                 id_local=art[0],
                 nombre=art[1]
             )
-    except Exception as identifier:
-        raise ErrorBusquedaLocal("Artista", f"{nombre_artista}", f"{identifier}") from identifier
+    except sqlite3.Error as identifier:
+        raise ErrorBusquedaLocal("Artista", nombre_artista, str(identifier)) from identifier
 
 
 def buscar_albumes_artista(id_artista: int, db: Path | None = None) -> List[SalidaAlbum]:
     """Obtiene los álbumes asociados a un artista dado su identificador local.
 
     Args:
-        id_artista: Identificador local del artista.
+        id_artista: Identificador local positivo del artista principal.
         db: Ruta de la base de datos. Si es ``None``, se usa la ruta por defecto.
 
     Returns:
         Lista de objetos :class:`SalidaAlbum` con los datos de los álbumes del artista.
 
     Raises:
-        ValueError: Si el identificador del artista no es válido.
+        ValueError: Si el identificador del artista no es un entero positivo.
         ErrorBusquedaLocal: Si ocurre un error al consultar la base de datos.
     """
-    if not id_artista:
-        raise ValueError(f"El id del artista no puede estar vacío")
+    if not isinstance(id_artista, int) or isinstance(id_artista, bool) or id_artista <= 0:
+        raise ValueError("El id del artista debe ser un entero positivo.")
     try:
         lista_albumes: List[SalidaAlbum] = []
-        with get_connection(db) as conn:
-            alb = conn.execute('''
+        with closing(get_connection(db)) as conn:
+            with conn:
+                alb = conn.execute('''
                 SELECT id_album, titulo_album,
                     pistas_totales, fecha_lanzamiento
                 FROM Albumes
                 WHERE artista_principal_id = ?;
                 ''', (id_artista,)
             ).fetchall()
-        if not alb:
-            return lista_albumes
-        else:
-            for a in alb:
-                lista_albumes.append(
-                    SalidaAlbum(
-                        id_local=a[0],
-                        titulo=a[1],
-                        pistas_totales=a[2],
-                        lanzamiento=a[3]
-                    )
+        for a in alb:
+            lista_albumes.append(
+                SalidaAlbum(
+                    id_local=a[0],
+                    titulo=a[1],
+                    pistas_totales=a[2],
+                    lanzamiento=a[3]
                 )
+            )
         return lista_albumes
-    except Exception as identifier:
-        raise ErrorBusquedaLocal("Albumes", f"Artista con ID: {str(id_artista)}", f"{identifier}")
+    except sqlite3.Error as identifier:
+        raise ErrorBusquedaLocal(
+            "Albumes", f"Artista con ID: {id_artista}", str(identifier)
+        ) from identifier
 
 
 def buscar_canciones_album(id_album: int, db: Path | None = None) -> List[SalidaCancion]:
     """Busca las canciones que pertenecen a un álbum.
 
     Args:
-        id_album: Identificador local del álbum.
+        id_album: Identificador local positivo del álbum.
         db: Ruta de la base de datos. Si es ``None``, se usa la ruta por defecto.
 
     Returns:
         Lista de objetos :class:`SalidaCancion` con la información de las canciones.
+        Si el álbum no tiene canciones vinculadas, devuelve una lista vacía.
 
     Raises:
-        ValueError: Si el identificador del álbum no es válido.
+        ValueError: Si el identificador del álbum no es un entero positivo.
+        ErrorBusquedaLocal: Si ocurre un error al consultar la base de datos.
     """
-    if not id_album:
-        raise ValueError(f"El id del album no puede estar vacío")
+    if not isinstance(id_album, int) or isinstance(id_album, bool) or id_album <= 0:
+        raise ValueError("El id del álbum debe ser un entero positivo.")
     try:
         lista_canciones: List[SalidaCancion] = []
-        with get_connection(db) as conn:
-            can = conn.execute('''
-                SELECT c.id_cancion, c.titulo_cancion,
-                    ca.numero_cancion
-                FROM Canciones_Albumes ca
-                JOIN Canciones c ON ca.id_cancion = c.id_cancion
-                WHERE ca.id_album = ?;
-                ''', (id_album,)
-            ).fetchall()
-        if not can:
-            return lista_canciones
-        else:
-            for c in can:
-                lista_canciones.append(
-                    SalidaCancion(
-                        id_local=c[0],
-                        titulo=c[1],
-                        album_id=id_album,
-                        numero_cancion=c[2]
-                    )
+        with closing(get_connection(db)) as conn:
+            with conn:
+                can = conn.execute('''
+                    SELECT c.id_cancion, c.titulo_cancion,
+                        ca.numero_cancion
+                    FROM Canciones_Albumes ca
+                    JOIN Canciones c ON ca.id_cancion = c.id_cancion
+                    WHERE ca.id_album = ?
+                    ORDER BY ca.numero_cancion, c.id_cancion;
+                    ''', (id_album,)
+                ).fetchall()
+        for c in can:
+            lista_canciones.append(
+                SalidaCancion(
+                    id_local=c[0],
+                    titulo=c[1],
+                    album_id=id_album,
+                    numero_cancion=c[2]
                 )
+            )
         return lista_canciones
-    except Exception as identifier:
-        raise ValueError(f"Error: {identifier}")
+    except sqlite3.Error as identifier:
+        raise ErrorBusquedaLocal(
+            "Canciones_Albumes", f"Álbum con ID: {id_album}", str(identifier)
+        ) from identifier
 
 
 def buscar_cancion_en_album(id_cancion: int, db: Path | None = None) -> List[Tuple[SalidaAlbum, int]]:
+    """
+    Todos los álbumes en el que aparece la canción
+    """
     if not id_cancion:
         raise ValueError(f"El id de la canción no puede estar vacío")
     try:
@@ -419,7 +436,7 @@ def buscar_artista_cod(nombre: str, codigo_ident: int, db: Path | None = None) -
                 api_id=codigo_ident,
                 codigo_ext=""
             )
-            lista_cod = obtener_codigos(
+            lista_cod = obtener_codigos_api(
                 codigo=cod,
                 tipo="artista",
                 db=db
@@ -461,7 +478,7 @@ def buscar_albumes_artista_cod(id_artista: int, codigo_ident: int, db: Path | No
                         api_id=codigo_ident,
                         codigo_ext=""
                     )
-                    lista_cod = obtener_codigos(
+                    lista_cod = obtener_codigos_api(
                         codigo=cod,
                         tipo="album",
                         db=db
@@ -503,7 +520,7 @@ def buscar_canciones_artista_cod(id_artista: int, codigo_ident: int, db: Path | 
                         api_id=codigo_ident,
                         codigo_ext=""
                     )
-                    l_codigos = obtener_codigos(
+                    l_codigos = obtener_codigos_api(
                         codigo=cod,
                         tipo="cancion",
                         db=db

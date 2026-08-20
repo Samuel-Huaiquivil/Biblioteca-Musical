@@ -3,9 +3,16 @@ from typing import List
 
 from models.schemas_v5 import DatosMusica, PaqueteDatos
 from utils.id3 import escribir_tags, incrustar_portada
-
+from utils.procesador_texto import (
+    pipeline_album,
+    pipeline_artistas,
+    pipeline_genero,
+    pipeline_titulo,
+    pipeline_art_prin
+)
 
 def _paquete_to_datos_musica(paquete: PaqueteDatos) -> DatosMusica:
+    "Limpia los texto a través de un Pipeline."
     cls_alb = paquete.album
     cls_can = paquete.cancion
     cls_art = paquete.artistas
@@ -13,22 +20,30 @@ def _paquete_to_datos_musica(paquete: PaqueteDatos) -> DatosMusica:
 
     artistas: List[str] = []
     for c in cls_art.colaboradores or []:
-        artistas.append(c.nombre)
+        art = pipeline_artistas.ejecutar(c.nombre)
+        if not art:
+            continue
+        artistas.append(art)
     for f in cls_art.feat or []:
-        artistas.append(f.nombre)
-
-    gen = "Desconocido"
-    if cls_gen:
-        gen = cls_gen.nombre
+        art = pipeline_artistas.ejecutar(f.nombre)
+        if not art:
+            continue
+        artistas.append(art)
+        
+    can_limpio = pipeline_titulo.ejecutar(cls_can.titulo)
+    alb_limpio = pipeline_album.ejecutar(cls_alb.titulo)
+    gro_limpio = pipeline_genero.ejecutar(cls_gen.nombre if cls_gen else "" )
+    principal = pipeline_art_prin.ejecutar(cls_art.principal.nombre)
+    
 
     return DatosMusica(
-        titulo=cls_can.titulo,
-        album=cls_alb.titulo,
-        artista_principal=cls_art.principal.nombre,
+        titulo=can_limpio,
+        album=alb_limpio,
+        artista_principal=principal,
         artistas_colab=artistas,
         anio=cls_alb.lanzamiento.year,
         num_pista=cls_can.num_pista,
-        genero=gen
+        genero=gro_limpio
     )
 
 # ---------------------------------------------------------------------------
@@ -41,9 +56,10 @@ def pipeline_mutagen(ruta_mp3: Path, paquete: PaqueteDatos, ruta_img: Path | Non
     Inserta los datos al archivo
     '''
 
-    # Adaptador
+    # Pipeline
     datos = _paquete_to_datos_musica(paquete=paquete)
 
+    # Añadir tags Eventualmente
     escribir_tags(ruta_mp3, datos)
 
     if ruta_img:

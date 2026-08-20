@@ -85,7 +85,7 @@ class PipelineLog:
 
     @classmethod
     def get_logger(cls, modulo: str):
-        return logging.getLogger(f"pipeline.{modulo}")
+        return logging.getLogger(f"p.{modulo}")
 
     def __init__(self, modulo) -> None:
         self._logger = self.get_logger(modulo)

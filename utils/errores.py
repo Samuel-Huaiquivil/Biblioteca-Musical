@@ -48,7 +48,10 @@ class ErrorBusquedaLocal(ErrorBaseDatos):
         self.tabla = tabla
         self.valor = valor
         self.detalles = detalles
-        super().__init__(f"Error buscando {valor} en {tabla}. Detalles {detalles}")
+        super().__init__(
+            f"Error buscando {valor} en {tabla}. Detalles: {detalles}.",
+            data=detalles
+        )
 
 
 class ErrorInsercionLocal(ErrorBaseDatos):

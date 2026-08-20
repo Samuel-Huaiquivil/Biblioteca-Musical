@@ -118,6 +118,7 @@ def incrustar_portada(ruta_mp3: Path, ruta_img: Path):
     try:
         audio = _cargar_id3(ruta=ruta_mp3)
 
+        # Eliminar las carátulas existentes.
         audio.delall("APIC")
 
         mime_type, _ = mimetypes.guess_type(ruta_img)

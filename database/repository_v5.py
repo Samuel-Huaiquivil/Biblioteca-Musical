@@ -1,4 +1,5 @@
 """Pipeline de integración de datos para insertar paquetes de información en la base de datos local."""
+from datetime import date
 import sqlite3
 from pathlib import Path
 from typing import List, Tuple
@@ -23,6 +24,7 @@ from database.insert import (
     insertar_cancion,
     insertar_genero,
     insertar_artista,
+    insertar_url_descarga,
     vincular_artista_cancion,
     vincular_cancion_album,
     vincular_genero_cancion
@@ -344,6 +346,18 @@ def pipeline_insertar_paquete(
             #logger.debug("Artista(s) y Canción Vinculados Correctamente.")
         except ErrorVincularDatos:
             raise
+
+    if clase_album.url_descarga:
+        try:
+            val = insertar_url_descarga(
+                album_id=id_album,
+                url_descarga=clase_album.url_descarga,
+                fecha= date.today(),
+                revisado=False,
+                db=ruta_base_datos
+            )
+        except Exception as identifier:
+            logger.debug(f"No se pudo insertar la url del álbum '{id_album}'. ")
 
 def pipeline_insertar_canciones_de_album(
         paquete_album: PaqueteDatos

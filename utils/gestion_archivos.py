@@ -31,6 +31,12 @@ def listar_mp3(ruta: Path, cantidad: int = 0, recursivo: bool = False) -> list[P
     return random.sample(archivos, cantidad)
 
 
+def listar_imagenes(ruta: Path, recursivo: bool = False) -> list[Path]:
+    patron = "*.jpg"
+    archivos = list(ruta.rglob(patron) if recursivo else ruta.glob(patron))
+    return archivos
+
+
 # -----------------------------
 # Movimiento de archivos
 # -----------------------------

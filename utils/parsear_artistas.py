@@ -1,3 +1,4 @@
+# utils/parsear_artistas.py (ClaudeCode)
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional

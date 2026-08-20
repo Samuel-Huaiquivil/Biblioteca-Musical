@@ -91,6 +91,7 @@ class Album(BaseModel):
     lanzamiento: date = Field(default=date(2000, 1, 1))
     pistas_totales: int = Field(default=1)
     codigo: Optional[str] = Field(default=None)
+    url_descarga: Optional[str] = Field(default=None)
 
     def __str__(self) -> str:
         """Devuelve una representación textual del álbum con fecha y cantidad de pistas."""

@@ -94,7 +94,8 @@ class RespuestaItunes(BaseModel):
             titulo=clase.titulo if fmt else self.collectionName,
             lanzamiento=self._fecha_lanzamiento(),
             codigo=str(self.collectionId),
-            pistas_totales=self.trackCount
+            pistas_totales=self.trackCount,
+            url_descarga=self.get_url()
         )
 
     def to_cancion(self) -> Cancion:
@@ -140,7 +141,8 @@ class RespuestaItunes(BaseModel):
             titulo=tit_fmt if fmt else tit,
             lanzamiento=self._fecha_lanzamiento(),
             pistas_totales=self.trackCount,
-            codigo=str(self.collectionId)
+            codigo=str(self.collectionId),
+            url_descarga=self.get_url()
         )
 
     def to_album_exte(self, fmt: bool = True) -> Album:
@@ -153,7 +155,8 @@ class RespuestaItunes(BaseModel):
             titulo=tit_fmt if fmt else tit,
             lanzamiento=self._fecha_lanzamiento(),
             pistas_totales=self.trackCount,
-            codigo=str(self.collectionId)
+            codigo=str(self.collectionId),
+            url_descarga=self.get_url()
         )
 
     def art_principal_str(self) -> str:

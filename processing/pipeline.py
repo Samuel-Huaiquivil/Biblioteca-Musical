@@ -2,12 +2,13 @@ from pathlib import Path
 
 from database.init_db import iniciar_base_datos
 from database.busqueda import busqueda_paquete_local
+from processing.local import busqueda_datos_locales
 from processing.mutagen import pipeline_mutagen
 from processing.resp_mbz import procesar_respuesta_mbz
 from utils.logging_class import PipelineLog
 
 from config.setup import preparar_entorno
-from utils.gestion_archivos import listar_mp3, mover_y_renombrar_cancion, obtener_datos_cancion
+from utils.gestion_archivos import listar_imagenes, listar_mp3, mover_y_renombrar_cancion, obtener_datos_cancion
 from api.itunes import busqueda_itunes_por_nivel
 from api.musicbrainz import buscar_cancion_mbz
 from processing.resp_itunes import procesar_respuestas_itunes
@@ -35,8 +36,8 @@ def pipeline_principal(
     logger.etapa_inicio("Búsqueda de Archivos Musicales")
     errores_totales = 0
 
-
     lista_archivos_mp3 = listar_mp3(ruta=ruta_carpeta, cantidad=cantidad_busq)
+    lista_imagenes_caratula = listar_imagenes(ruta=car_caratulas, recursivo=True)
 
     for archivo_mp3 in lista_archivos_mp3:
 
@@ -61,12 +62,12 @@ def pipeline_principal(
             continue
 
         logger.proceso("Búsqueda en Base Datos Local.")
-        paquete, ruta_caratula = None, None
 
-        paquete = busqueda_paquete_local(
+        paquete, ruta_caratula = busqueda_datos_locales(
             artista=artista_cancion,
             titulo=titulo_cancion,
-            ruta_base_datos=ruta_base_datos
+            lista_caratulas=lista_imagenes_caratula,
+            base_datos=ruta_base_datos
         )
 
         if not paquete:
@@ -167,7 +168,6 @@ def pipeline_principal(
             )
             errores_totales += 1
             continue
-
 
         mover_y_renombrar_cancion(
             ruta_cancion=ruta,

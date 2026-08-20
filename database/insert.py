@@ -1,6 +1,8 @@
 # database/insert.py
 """Funciones de inserción y vinculación de entidades en la base de datos local."""
 
+from datetime import date
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 
@@ -24,29 +26,41 @@ def insertar_artista(artista: Artista, db: Path | None = None) -> int:
         El identificador local del artista insertado o recuperado.
 
     Raises:
-        ValueError: Si el artista ya existe pero no se puede recuperar su ID.
+        ValueError: Si el nombre del artista está vacío.
         ErrorInsercionLocal: Si ocurre un error durante la inserción.
     """
+    nombre_artista = artista.nombre.strip()
+    if not nombre_artista:
+        raise ValueError("El nombre del artista no puede estar vacío.")
+
     try:
-        with get_connection(db) as conn:
-            cursor = conn.execute("""
-                INSERT INTO Artistas (nombre_artista) VALUES (?);
-            """, (artista.nombre,))
-            conn.commit()
-            if cursor.lastrowid:
+        with closing(get_connection(db)) as conn:
+            with conn:
+                try:
+                    cursor = conn.execute("""
+                        INSERT INTO Artistas (nombre_artista) VALUES (?);
+                    """, (nombre_artista,))
+                except sqlite3.IntegrityError as identifier:
+                    existente = conn.execute("""
+                        SELECT id_artista
+                        FROM Artistas
+                        WHERE nombre_artista = ?;
+                    """, (nombre_artista,)).fetchone()
+                    if existente:
+                        return existente[0]
+                    raise ErrorInsercionLocal(
+                        "Artista", nombre_artista, str(identifier)
+                    ) from identifier
+
+                if not cursor.lastrowid:
+                    raise ErrorInsercionLocal(
+                        "Artista", nombre_artista, "La inserción no devolvió un ID."
+                    )
                 return cursor.lastrowid
-            else:
-                return 0
-
-    except sqlite3.IntegrityError:
-        art = buscar_artista(artista.nombre, db)
-        if art:
-            return art.id_local
-        else:
-            raise ValueError(f"El artista '{artista}' ya existe, pero no se pudo recuperar su ID.")
-
-    except Exception as e:
-        raise ErrorInsercionLocal("Artista", f"{artista.nombre}", f"{str(e)}") from e
+    except sqlite3.Error as identifier:
+        raise ErrorInsercionLocal(
+            "Artista", nombre_artista, str(identifier)
+        ) from identifier
 
 
 def insertar_album(album: Album, id_artista: int, revisado: bool = False, db: Path | None = None) -> int:
@@ -154,6 +168,35 @@ def insertar_genero(genero: Genero, db: Path | None = None) -> int:
 
     except Exception as e:
         raise ErrorInsercionLocal("Género", f"{genero.nombre}", f"{str(e)}") from e
+
+'''
+    id_caratula     INTEGER PRIMARY KEY AUTOINCREMENT,
+    url_descarga    TEXT,
+    fecha_descarga  DATE,       -- Adaptador/Convertidor en settings.py
+    revisado        BOOLEAN,    -- Adaptador/Convertidor en settings.py
+    album_id        INTEGER UNIQUE,
+'''
+
+def insertar_url_descarga(album_id: int, url_descarga: str, fecha: date = date.today(), revisado: bool = False, db: Path | None = None) -> int:
+    if not album_id or not url_descarga:
+        raise ValueError("Los valores no pueden ser nulos.")
+    try:
+        with get_connection(db) as conn:
+            cursor = conn.execute(
+                """INSERT INTO Caratulas 
+                (url_descarga, fecha_descarga, revisado, album_id) 
+                VALUES (?, ?, ?, ?)""",
+                (url_descarga, fecha, revisado, album_id)
+            )
+            conn.commit()
+            if cursor.lastrowid:
+                return cursor.lastrowid
+            else:
+                return 0
+    except sqlite3.IntegrityError:
+        return -1
+    except Exception as e:
+        raise
 
 
 def vincular_artista_cancion(id_artista: int, id_cancion: int, rol: str = "Principal", db: Path | None = None) -> None:

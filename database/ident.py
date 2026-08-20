@@ -1,6 +1,6 @@
 from pathlib import Path
 import sqlite3
-from typing import List, Tuple
+from typing import List
 
 from config.settings import get_connection
 from models.schemas_v5 import Ident, Codigo
@@ -90,8 +90,26 @@ def _insertar_registro_codigo(codigo: Codigo, tipo: str, db: Path | None = None)
     except Exception as identifier:
         raise ErrorCodigos(f"{tipo} ID: {codigo.tabla_id}", f"{identifier}") from identifier
 
-def obtener_codigos(codigo: Codigo, tipo: str, db: Path | None = None) -> List[str]:
-    "Obtiene todos los códigos de la entidad"
+def obtener_codigos_api(codigo: Codigo, tipo: str, db: Path | None = None) -> List[str]:
+    "Obtiene todos los códigos de la entidad con la api asociada"
+    try:
+        if tipo not in tipos_validos.keys():
+            raise ValueError(f"Tipo '{tipo}' NO Válido. Opciones: {tipos_validos.keys()}")
+        tabla = tipos_validos.get(tipo)
+        lista_codigos: List[str] = []
+        with get_connection(db) as conn:
+            query = f"SELECT codigo_ext FROM {tabla} WHERE {tipo}_id = ? AND api_id = ?;"
+            filas = conn.execute(query, (codigo.tabla_id, codigo.api_id)).fetchall()
+            if not filas:
+                return lista_codigos
+            else:
+                for f in filas:
+                    lista_codigos.append(f[0])
+            return lista_codigos
+    except Exception as e:
+        raise ValueError(f"Error: {e}") from e
+
+def obtener_codigos_entidad(id_tabla: int, tipo: str, db: Path | None = None) -> List[str]:
     try:
         if tipo not in tipos_validos.keys():
             raise ValueError(f"Tipo '{tipo}' NO Válido. Opciones: {tipos_validos.keys()}")
@@ -99,7 +117,7 @@ def obtener_codigos(codigo: Codigo, tipo: str, db: Path | None = None) -> List[s
         lista_codigos: List[str] = []
         with get_connection(db) as conn:
             query = f"SELECT codigo_ext FROM {tabla} WHERE {tipo}_id = ?;"
-            filas = conn.execute(query, (codigo.tabla_id,)).fetchall()
+            filas = conn.execute(query, (id_tabla,)).fetchall()
             if not filas:
                 return lista_codigos
             else:
@@ -140,12 +158,3 @@ def insertar_codigo(
         return num
     except Exception as identifier:
         raise ErrorCodigos(tipo, f"{str(identifier)}")
-
-_IDENT_GLOBAL = Ident(api="MusicBrainz", region="Global", id=0)
-_IDENT_GROUP = Ident(api="MusicBrainz", region="Groups", id=0)
-
-def obtener_ident_mbz(base_datos: Path | None = None) -> Tuple[int, int]:
-    "Obtiene el identificador de Grupo y el Global"
-    id_grp = obt_ins_identificador(_IDENT_GLOBAL, base_datos)
-    id_glb = obt_ins_identificador(_IDENT_GROUP, base_datos)
-    return (id_grp, id_glb)

@@ -14,10 +14,14 @@ logger = PipelineLog(__name__)
 
 def procesar_respuestas_itunes(lista_respuesta: List[Any], base_datos: Path | None = None):
     "Procesa una lista de elementos en itunes"
+
     logger.proceso("Respuesta Itunes")
+
     logger.info(f"Procesando {len(lista_respuesta)} elemento(s).")
+
     errores = 0
     cont = 0
+
     for respuesta in lista_respuesta:
         try:
             #Validación externa:

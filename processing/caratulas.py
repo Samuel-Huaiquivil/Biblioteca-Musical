@@ -12,8 +12,8 @@ from models.schemas_v5 import PaqueteDatos
 from utils.errores import ErrorAPI, ErrorArchivo
 from utils.logging_class import PipelineLog
 
-from api.itunes import descargar_caratula_itunes
-from api.coverarchive import descargar_caratula_coverarchive, get_url
+from peticiones.itunes import descargar_caratula_itunes
+from peticiones.coverarchive import descargar_caratula_coverarchive, get_url
 from utils.gestion_archivos import guardar_bytes_imagen
 from utils.reglas_puntuador import validadores, reglas_itunes, reglas_mbz
 
